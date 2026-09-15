@@ -90,8 +90,8 @@ Full experiment log with hyperparameters: [`experiments.json`](experiments.json)
 ### Run Locally
 
 ```bash
-git clone https://github.com/prasad0411/Thyroid-Disease-Classification.git
-cd Thyroid-Disease-Classification
+git clone https://github.com/prasad0411/thyroid-disease-classification.git
+cd thyroid-disease-classification
 pip install -r requirements.txt
 streamlit run app.py
 ```
