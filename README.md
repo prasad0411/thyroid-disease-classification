@@ -5,7 +5,9 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python)](https://python.org)
 [![Model Card](https://img.shields.io/badge/Model_Card-Responsible_AI-green)](/MODEL_CARD.md)
 
-A production-grade ML system for thyroid disease classification combining a Random Forest classifier (97.3% held-out accuracy), SHAP explainability, RAG-powered clinical Q&A, and an interactive Streamlit dashboard — published in Springer Conference Proceedings and deployed for real-time clinical decision support.
+An ML system for thyroid disease classification combining an XGBoost classifier (**85.09% accuracy, macro F1 0.7213** against a 72.97% majority baseline), SHAP explainability, RAG-powered clinical Q&A, and an interactive Streamlit dashboard.
+
+The headline number is deliberately lower than an earlier version of this project reported. That version scored 97.6% because four input features were derived from the diagnosis label: a depth-4 decision tree using only those four, with no hormone values at all, reached 94.3%. The data generator was rebuilt around causal ordering — latent condition → hormone levels → clinical observations → recorded diagnosis, with treatment partially normalising labs as a real confounder — and evaluation was rebuilt with resampling inside cross-validation folds and feature selection fit on training data only. 85.09% is what the model learns from hormone panels rather than from leaked treatment flags.
 
 ---
 
@@ -18,9 +20,9 @@ Lab values TSH, T3, T4, T4U
 Demographics + History"] --> B["Feature Engineering
 RFE: 19 to 12 features
 SMOTE: 3:1 to 1:1 balance"]
-    B --> C["Random Forest Classifier
-XGBoost + Random Forest
-Selected by held-out F1 · 97.3% accuracy"]
+    B --> C["XGBoost Classifier
+Selected by validation macro F1
+85.09% accuracy · macro F1 0.7213"]
     C --> D["Prediction + Confidence"]
     C --> E["SHAP Explainer
 Per-feature values"]
@@ -72,16 +74,55 @@ Batch · About"]
 
 ## 📈 Experiment History
 
-| Experiment | Model | Features | SMOTE | Accuracy | Minority Recall |
-|-----------|-------|----------|-------|----------|----------------|
-| Baseline | XGBoost | 19 | No | 94.3% | 68% |
-| + SMOTE | XGBoost | 19 | Yes | 96.1% | 89% |
-| + RFE | XGBoost | 12 | Yes | 96.8% | 91% |
-| Random Forest | RF | 12 | Yes | 96.4% | 90% |
-| **Ensemble** | XGB + RF | 12 | Yes | 97.2% | 97% |
-| **Random Forest (Final)** | **RF** | **12** | **Yes** | **97.3%** | **97%** |
+### Leakage audit
 
-Full experiment log with hyperparameters: [`experiments.json`](experiments.json)
+Before trusting any score, the dataset was checked for how much signal the
+features actually carry:
+
+| Check | Accuracy |
+|-------|----------|
+| Majority-class baseline | 72.97% |
+| Clinical flags only, no hormone values | 75.34% |
+| Lift of flags over baseline | 2.37% |
+
+A trivial predictor already reaches 72.97%. Any reported accuracy has to be read
+against that, not against zero.
+
+### Corrected results
+
+| Metric | Value |
+|--------|-------|
+| Test accuracy | **85.09%** |
+| Test macro F1 | **0.7213** |
+| 5-fold CV macro F1 (train) | 0.7269 ± 0.0044 |
+| Selected model | XGBoost, by validation macro F1 |
+| Features | 17 → 12 via RFE, fit on the training fold only |
+| Class balancing | SMOTE inside CV folds |
+| Dataset | 150,000 synthetic rows (90,000 train) |
+
+### Per-class performance
+
+Published in full because the aggregate hides the part that matters: recall on
+the minority classes is where a clinical model either works or does not.
+
+| Class | Precision | Recall | F1 | Support |
+|-------|-----------|--------|----|---------|
+| Hyperthyroid | 0.87 | 0.44 | 0.58 | 2225 |
+| Hypothyroid | 0.88 | 0.55 | 0.67 | 5884 |
+| Negative | 0.85 | 0.97 | 0.91 | 21891 |
+
+### Probability calibration
+
+Isotonic regression applied after model selection, so predicted confidence is
+usable for thresholding rather than ranking alone:
+
+| Class | Brier (raw) | Brier (calibrated) | Improvement |
+|-------|-------------|--------------------|-------------|
+| Hyperthyroid | 0.0655 | 0.0361 | 45% |
+| Hypothyroid | 0.0865 | 0.0709 | 18% |
+| Negative | 0.1576 | 0.1011 | 36% |
+
+Full experiment log, including the leakage audit and calibration analysis: [`outputs/experiments.json`](outputs/experiments.json)
 
 ## 🚀 Deployment
 
