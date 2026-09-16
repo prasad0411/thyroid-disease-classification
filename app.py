@@ -11,7 +11,8 @@ Production-grade ML dashboard with:
 - PDF report export
 
 Author: Prasad Kanade | Northeastern University
-Published: Springer (97.3% held-out accuracy, 150,000 synthetic records)
+Published: Springer. Leak-free evaluation: 85.09% accuracy, macro F1 0.7213
+on 150,000 synthetic records against a 72.97% majority baseline.
 
 Usage: streamlit run app.py
 """
@@ -699,7 +700,9 @@ elif page == "Model Performance":
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(figsize=(8, 4))
     perf_df.plot(kind="bar", ax=ax, edgecolor="none", width=0.7)
-    ax.set_ylim(0.95, 1.0)
+    # Was ylim(0.95, 1.0), tuned for the pre-correction scores. The
+    # leak-free run sits at 0.72-0.85, which that floor would clip entirely.
+    ax.set_ylim(0, 1.0)
     ax.set_ylabel("Score")
     ax.set_title("Model Performance Comparison")
     ax.legend(loc="lower right", fontsize=8)
@@ -868,14 +871,19 @@ elif page == "About & Methodology":
 
     **1. Classification Model**
 
-    A Random Forest classifier, selected over XGBoost and a soft-voting ensemble by held-out F1, trained on 150,000 synthetic records
+    An XGBoost classifier, selected on validation macro F1 and trained on 150,000 synthetic records,
     classifies patients into three categories: **Negative** (euthyroid), **Hypothyroid**, and
-    **Hyperthyroid**. The model achieves **97.3% held-out accuracy** with SMOTE oversampling to handle
-    class imbalance (improving minority class recall from 68% to 93%).
+    **Hyperthyroid**. It reaches **85.09% accuracy and macro F1 0.7213** against a 72.97%
+    majority baseline, with SMOTE applied inside cross-validation folds.
+
+    Per-class recall is published deliberately: 0.98 for Negative but **0.44 for
+    Hyperthyroid and 0.55 for Hypothyroid**. Overall accuracy is carried by the
+    majority class, which is the opposite of what a screening tool wants, and the
+    aggregate alone would hide that.
 
     **2. Feature Selection**
 
-    Recursive Feature Elimination (RFE) reduces the original 19 clinical features to 12
+    Recursive Feature Elimination (RFE), fit on the training fold only, reduces the original 17 clinical features to 12
     most discriminative features, maintaining performance while improving interpretability.
     Key features include TSH, T3, T4, FTI, age, and treatment status.
 
