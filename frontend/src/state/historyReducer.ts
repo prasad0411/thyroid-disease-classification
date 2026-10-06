@@ -6,6 +6,7 @@ export const HISTORY_LIMIT = 20;
 export interface HistoryEntry {
   id: number;
   at: string;
+  patientId: string;
   patient: PatientInput;
   result: Prediction;
 }

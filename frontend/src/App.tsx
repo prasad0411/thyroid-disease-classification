@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { explain, getModelInfo, predict, type Explanation, type ModelInfo, type Prediction } from './api';
 import { HistoryPanel } from './components/HistoryPanel';
-import { ModelInfoBar } from './components/ModelInfoBar';
 import { PatientForm } from './components/PatientForm';
 import { Report } from './components/Report';
 import { useHistory } from './state/useHistory';
@@ -12,7 +11,9 @@ type PredictState =
   | { status: 'loading' }
   | {
       status: 'success';
+      patientId: string;
       patient: PatientInput;
+      reportedAt: string;
       result: Prediction;
       explanation: Explanation | null;
       explainError: string | null;
@@ -20,6 +21,8 @@ type PredictState =
   | { status: 'error'; message: string };
 
 const messageOf = (err: unknown) => (err instanceof Error ? err.message : 'Request failed');
+const stamp = () =>
+  new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 export default function App() {
   const [info, setInfo] = useState<ModelInfo | null>(null);
@@ -37,60 +40,84 @@ export default function App() {
     return () => ctrl.abort();
   }, []);
 
-  async function handlePredict(patient: PatientInput) {
+  async function handlePredict(patient: PatientInput, patientId: string) {
     setPred({ status: 'loading' });
     const [p, e] = await Promise.allSettled([predict(patient), explain(patient)]);
     if (p.status === 'rejected') {
       setPred({ status: 'error', message: messageOf(p.reason) });
       return;
     }
+    const reportedAt = stamp();
     setPred({
       status: 'success',
+      patientId,
       patient,
+      reportedAt,
       result: p.value,
       explanation: e.status === 'fulfilled' ? e.value : null,
       explainError: e.status === 'rejected' ? messageOf(e.reason) : null,
     });
-    dispatch({ type: 'add', entry: { at: new Date().toLocaleTimeString(), patient, result: p.value } });
+    dispatch({ type: 'add', entry: { at: new Date().toLocaleTimeString(), patientId, patient, result: p.value } });
   }
 
   return (
-    <div className="page">
-      <header className="masthead">
-        <h1>Thyroid panel review</h1>
-        <p className="lede">Enter a thyroid function panel to see which pattern the model finds, and why.</p>
-      </header>
-      {infoError && <ModelInfoBar info={null} error={infoError} />}
-      <main className="layout">
-        <PatientForm submitting={pred.status === 'loading'} onSubmit={handlePredict} />
-        <div className="report-slot">
-          {pred.status === 'success' && (
-            <Report
-              patient={pred.patient}
-              result={pred.result}
-              explanation={pred.explanation}
-              explainError={pred.explainError}
-            />
-          )}
-          {pred.status === 'error' && (
-            <div className="service-error" role="alert">
-              {pred.message}
+    <div className="app">
+      <header className="appbar">
+        <div className="appbar-inner">
+          <div className="brand">
+            <svg className="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+              <rect width="32" height="32" rx="7" />
+              <path d="M16 7c-2.2 3.4-6.5 4.6-6.5 9.6A5.5 5.5 0 0 0 16 22a5.5 5.5 0 0 0 6.5-5.4C22.5 11.6 18.2 10.4 16 7Z" />
+              <path d="M16 22v4" />
+            </svg>
+            <div>
+              <p className="brand-name">Thyroid Panel Review</p>
+              <p className="brand-dept">Endocrinology decision support</p>
             </div>
-          )}
-          {pred.status === 'idle' && (
-            <div className="report report-empty">
-              <p>Choose an example patient or enter lab values, then select Predict to generate a report.</p>
-            </div>
-          )}
-          {pred.status === 'loading' && (
-            <div className="report report-empty" aria-busy="true">
-              <p>Running the model</p>
-            </div>
-          )}
-          {!infoError && <ModelInfoBar info={info} error={null} />}
+          </div>
         </div>
-      </main>
-      <HistoryPanel />
+      </header>
+
+      <div className="page">
+        {infoError && (
+          <div className="service-error" role="alert">
+            {infoError}
+          </div>
+        )}
+        <main className="layout">
+          <PatientForm submitting={pred.status === 'loading'} onSubmit={handlePredict} />
+          <div className="report-slot">
+            {pred.status === 'success' && (
+              <Report
+                patientId={pred.patientId}
+                patient={pred.patient}
+                reportedAt={pred.reportedAt}
+                result={pred.result}
+                explanation={pred.explanation}
+                explainError={pred.explainError}
+                info={info}
+              />
+            )}
+            {pred.status === 'error' && (
+              <div className="service-error" role="alert">
+                {pred.message}
+              </div>
+            )}
+            {pred.status === 'idle' && (
+              <div className="report report-empty">
+                <h2 className="empty-title">No panel reviewed yet</h2>
+                <p>Enter the thyroid function results on the left, or load an example patient, then select Predict.</p>
+              </div>
+            )}
+            {pred.status === 'loading' && (
+              <div className="report report-empty" aria-busy="true">
+                <p>Reviewing panel</p>
+              </div>
+            )}
+          </div>
+        </main>
+        <HistoryPanel />
+      </div>
     </div>
   );
 }

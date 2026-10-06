@@ -43,6 +43,12 @@ function routeFetch(routes: Routes) {
   });
 }
 
+const ALL_OK: Routes = {
+  '/model-info': () => json(200, MODEL_INFO),
+  '/predict': () => json(200, PREDICTION),
+  '/explain': () => json(200, EXPLANATION),
+};
+
 function renderApp() {
   return render(
     <HistoryProvider>
@@ -54,21 +60,8 @@ function renderApp() {
 describe('App', () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it('shows honest model metrics from the API', async () => {
-    routeFetch({ '/model-info': () => json(200, MODEL_INFO) });
-    renderApp();
-    const note = await screen.findByTestId('model-info');
-    expect(note).toHaveTextContent('85.1%');
-    expect(note).toHaveTextContent('150,000 synthetic records');
-    expect(note).toHaveTextContent('Not for clinical use');
-  });
-
-  it('renders a report with flagged analytes and drivers', async () => {
-    const fetchMock = routeFetch({
-      '/model-info': () => json(200, MODEL_INFO),
-      '/predict': () => json(200, PREDICTION),
-      '/explain': () => json(200, EXPLANATION),
-    });
+  it('renders a full report with patient context, flags, drivers, and model details', async () => {
+    const fetchMock = routeFetch(ALL_OK);
     const user = userEvent.setup();
     renderApp();
     await user.click(screen.getByRole('button', { name: 'Hypothyroid pattern' }));
@@ -76,23 +69,35 @@ describe('App', () => {
 
     const report = await screen.findByRole('status');
     expect(within(report).getByRole('heading', { name: 'Pattern consistent with hypothyroidism' })).toBeInTheDocument();
+    expect(report).toHaveTextContent('MRN 100517');
+    expect(report).toHaveTextContent('45 y, female');
     expect(report).toHaveTextContent('98% model probability');
+    expect(report).toHaveTextContent('2 of 5 analytes outside reference intervals');
     const tshRow = within(report).getByRole('row', { name: /^TSH/ });
     expect(tshRow).toHaveTextContent('15.0');
-    expect(tshRow).toHaveTextContent('H');
-    expect(within(report).getByRole('img', { name: /TSH 15\.00, reference 0\.4 to 4, high, log scale/ })).toBeInTheDocument();
+    expect(tshRow).toHaveTextContent('High');
     expect(within(report).getByText('TSH 15')).toBeInTheDocument();
+    expect(within(report).getByTestId('model-info')).toHaveTextContent('150,000 synthetic patient records');
 
     const predictCall = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/predict'));
     expect(JSON.parse(String(predictCall?.[1]?.body))).toMatchObject({ TSH: 15, T4: 60, sex: 0 });
   });
 
+  it('copies a structured note to the clipboard', async () => {
+    routeFetch(ALL_OK);
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    renderApp();
+    await user.click(screen.getByRole('button', { name: 'Hypothyroid pattern' }));
+    await user.click(screen.getByRole('button', { name: 'Predict' }));
+    await user.click(await screen.findByRole('button', { name: 'Copy to note' }));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText.mock.calls[0][0]).toContain('TSH: 15.0 H (ref 0.4 to 4)');
+    expect(await screen.findByRole('button', { name: 'Copied to clipboard' })).toBeInTheDocument();
+  });
+
   it('still shows the prediction when the explanation fails', async () => {
-    routeFetch({
-      '/model-info': () => json(200, MODEL_INFO),
-      '/predict': () => json(200, PREDICTION),
-      '/explain': () => json(500, { detail: 'SHAP failed' }),
-    });
+    routeFetch({ ...ALL_OK, '/explain': () => json(500, { detail: 'SHAP failed' }) });
     const user = userEvent.setup();
     renderApp();
     await user.click(screen.getByRole('button', { name: 'Predict' }));

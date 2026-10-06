@@ -4,6 +4,7 @@ import { DEFAULT_PATIENT } from '../validation';
 
 const entry = (n: number) => ({
   at: `t${n}`,
+  patientId: 'MRN 1',
   patient: DEFAULT_PATIENT,
   result: { prediction: 'negative', confidence: n / 100, probabilities: {}, features_used: [], model_version: 'v' },
 });

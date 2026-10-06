@@ -16,8 +16,8 @@ export function Explanation({ contributions, error, className, limit = 6 }: Prop
   const top = contributions.slice(0, limit);
   const scale = Math.max(...top.map((c) => Math.abs(c.shap)), 1e-9);
   return (
-    <section aria-labelledby="explain-heading">
-      <h3 id="explain-heading">What drove this result</h3>
+    <section className="drivers-section" aria-labelledby="explain-heading">
+      <h3 id="explain-heading" className="section-title">What drove this result</h3>
       <p className="explain-note">
         Bars to the right moved the model toward {className}; bars to the left moved it away.
       </p>
