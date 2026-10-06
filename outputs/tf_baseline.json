@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-10-06T14:26:51",
+  "framework": "TensorFlow 2.21.0 (Keras)",
+  "architecture": "dense layers 256, 128 and 64 with batch norm, dropout 0.25 and a class weighted loss",
+  "parameters": 46211,
+  "epochs_run": 22,
+  "train_seconds": 12.6,
+  "test": {
+    "accuracy": 0.7768,
+    "f1_macro": 0.7092115149564385,
+    "log_loss": 0.5508205890655518,
+    "recall": {
+      "hyperthyroid": 0.7617977528089888,
+      "hypothyroid": 0.8954792658055745,
+      "negative": 0.746425471655018
+    }
+  },
+  "xgboost_test": {
+    "accuracy": 0.8509333333333333,
+    "f1_macro": 0.7213323596259976,
+    "log_loss": 0.37285376565025624
+  },
+  "same_split_as": "exp_20260903_155027"
+}

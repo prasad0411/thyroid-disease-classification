@@ -79,6 +79,15 @@ The browser only ever talks to its own origin; nginx forwards `/api` to the API 
 
 Trained on 150,000 synthetic patient records (90,000 train, 30,000 validation, 30,000 test) from a generator built around causal ordering: latent condition, then hormone levels, then clinical observations, then the recorded diagnosis. Precision is high across classes; recall on the two disease classes is the main area for improvement, and cost sensitive thresholds are the next planned step.
 
+### Neural network baseline
+
+| Test set (same split) | Accuracy | Macro F1 | Log loss |
+|---|---|---|---|
+| XGBoost, calibrated (production) | 85.1% | 0.721 | 0.373 |
+| TensorFlow 2.21.0 (Keras) MLP | 77.7% | 0.709 | 0.551 |
+
+The network (dense layers 256, 128 and 64 with batch norm, dropout 0.25 and a class weighted loss; 46,211 parameters) trains on the identical 90,000 / 30,000 / 30,000 split; the script verifies the test set matches the production model before training. XGBoost stays in production. On tabular data with a few strong threshold signals such as TSH, trees split on those thresholds directly while the network has to approximate them, and the trees are also calibrated and explainable per prediction with TreeSHAP. Reproduce with `python tf_baseline.py` using `requirements-tf.txt`.
+
 ## Design decisions
 
 **Leakage was found and removed, and the headline number went down.** An earlier version reported 97.6% accuracy. An audit showed four inputs were derived from the diagnosis label; a depth 4 tree using only those reached 94.3% without seeing a single hormone value. The generator and evaluation were rebuilt (feature selection and resampling inside training folds only), and the `ml-integrity` workflow now fails the build if that leak ever returns. Full history in [docs/MODEL_DETAILS.md](docs/MODEL_DETAILS.md).

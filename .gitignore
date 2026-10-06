@@ -14,3 +14,4 @@ mlruns/
 outputs/split_cache.pkl
 outputs/execution_history.log
 models/*_20260903_153413.*
+venv-tf/
