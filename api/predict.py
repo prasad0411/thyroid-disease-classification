@@ -1,76 +1,73 @@
 """
-FastAPI prediction endpoint for thyroid disease classification.
+FastAPI prediction service for thyroid disease classification.
 
-Usage: uvicorn api.predict:app --reload
+Usage: uvicorn api.predict:app --reload   (run from the repo root)
 """
-from fastapi import FastAPI
-from pydantic import BaseModel
-import joblib
-import json
-import numpy as np
-import pandas as pd
 import os
+from typing import Literal
 
-app = FastAPI(title="Thyroid Disease Classifier API", version="1.0")
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
-# Load model on startup
-models_dir = "models"
-meta_files = sorted([f for f in os.listdir(models_dir) if f.startswith("metadata_")], reverse=True)
-timestamp = meta_files[0].replace("metadata_", "").replace(".json", "")
-model = joblib.load(f"{models_dir}/best_model_{timestamp}.pkl")
-scaler = joblib.load(f"{models_dir}/scaler_{timestamp}.pkl")
-label_encoder = joblib.load(f"{models_dir}/label_encoder_{timestamp}.pkl")
-with open(f"{models_dir}/metadata_{timestamp}.json") as f:
-    metadata = json.load(f)
-features = metadata["features_selected"]
+from model_registry import load_latest, predict_one
+
+bundle = load_latest()
+
+app = FastAPI(title="Thyroid Disease Classifier API", version="2.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173").split(","),
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
+
+Flag = Literal[0, 1]
 
 
 class PatientInput(BaseModel):
-    TSH: float = 2.5
-    T3: float = 1.8
-    T4: float = 105.0
-    T4U: float = 1.0
-    age: float = 45.0
-    sex: int = 0
-    on_thyroxine: int = 0
-    on_antithyroid: int = 0
-    sick: int = 0
-    pregnant: int = 0
-    thyroid_surgery: int = 0
-    goitre: int = 0
+    TSH: float = Field(2.5, ge=0, le=500)
+    T3: float = Field(1.8, ge=0, le=20)
+    T4: float = Field(105.0, ge=0, le=500)
+    T4U: float = Field(1.0, ge=0, le=5)
+    age: float = Field(45.0, ge=0, le=120)
+    sex: Flag = 0
+    on_thyroxine: Flag = 0
+    on_antithyroid: Flag = 0
+    sick: Flag = 0
+    query_hypothyroid: Flag = 0
+    query_hyperthyroid: Flag = 0
 
 
 class PredictionOutput(BaseModel):
     prediction: str
     confidence: float
-    probabilities: dict
-    features_used: list
+    probabilities: dict[str, float]
+    features_used: list[str]
+    model_version: str
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": metadata["best_model"]}
+    return {"status": "ok", "model": bundle.model_name, "version": bundle.timestamp}
+
+
+@app.get("/model-info")
+def model_info():
+    return {
+        "model": bundle.model_name,
+        "version": bundle.timestamp,
+        "dataset_size": bundle.dataset_size,
+        "majority_baseline": bundle.baseline,
+        "test_metrics": bundle.metrics,
+        "features": bundle.features,
+    }
 
 
 @app.post("/predict", response_model=PredictionOutput)
 def predict(patient: PatientInput):
-    data = patient.model_dump()
-    data["FTI"] = data["T4"] / (data["T4U"] + 0.01)
-
-    for f in features:
-        if f not in data:
-            data[f] = 0
-
-    input_df = pd.DataFrame([{f: data.get(f, 0) for f in features}])
-    input_scaled = scaler.transform(input_df)
-
-    prediction_idx = model.predict(input_scaled)[0]
-    probabilities = model.predict_proba(input_scaled)[0]
-    prediction = label_encoder.inverse_transform([prediction_idx])[0]
-
-    return PredictionOutput(
-        prediction=prediction,
-        confidence=float(probabilities[prediction_idx]),
-        probabilities={cls: float(p) for cls, p in zip(label_encoder.classes_, probabilities)},
-        features_used=features,
-    )
+    try:
+        out = predict_one(bundle, patient.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return PredictionOutput(**out, features_used=bundle.features, model_version=bundle.timestamp)

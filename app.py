@@ -189,33 +189,12 @@ PRESET_PATIENTS = {
 # ── Model Loading ─────────────────────────────────────────────────────────
 @st.cache_resource
 def load_model():
-    models_dir = "models"
-    meta_files = sorted(
-        [f for f in os.listdir(models_dir) if f.startswith("metadata_")], reverse=True
-    )
-    if not meta_files:
-        st.error("No trained model found. Run `python train.py` first.")
-        st.stop()
-    timestamp = meta_files[0].replace("metadata_", "").replace(".json", "")
     try:
-        model = joblib.load(f"{models_dir}/best_model_{timestamp}.pkl")
-        scaler = joblib.load(f"{models_dir}/scaler_{timestamp}.pkl")
-        label_encoder = joblib.load(f"{models_dir}/label_encoder_{timestamp}.pkl")
+        b = load_latest()
     except Exception as e:
         st.error(f"Failed to load model: {e}. Run `python train.py` to retrain.")
         st.stop()
-    with open(f"{models_dir}/metadata_{timestamp}.json") as f:
-        metadata = json.load(f)
-    # Extract XGBoost for SHAP
-    xgb_model = None
-    if hasattr(model, 'named_estimators_'):
-        for name, est in model.named_estimators_.items():
-            if 'XGB' in type(est).__name__:
-                xgb_model = est
-                break
-    if xgb_model is None:
-        xgb_model = model
-    return model, xgb_model, scaler, label_encoder, metadata
+    return b.model, unwrap_tree_model(b.model), b.scaler, b.label_encoder, b.metadata, b
 
 
 @st.cache_resource
@@ -364,11 +343,13 @@ def compute_counterfactuals(model, scaler, label_encoder, features, patient, cur
     return counterfactuals
 
 
+from model_registry import load_latest, unwrap_tree_model, headline_metrics, comparison_table
+
 # ── Load Resources ────────────────────────────────────────────────────────
-model, xgb_model, scaler, label_encoder, metadata = load_model()
-features = metadata["features_selected"]
-if isinstance(features, int):
-    features = [f"feature_{i}" for i in range(features)]
+model, xgb_model, scaler, label_encoder, metadata, bundle = load_model()
+features = bundle.features
+headline = headline_metrics(bundle)
+_pct = lambda x: f"{x:.1%}" if x is not None else "n/a"
 
 # Lazy-loaded inside pages that need them
 rag_sys = None
@@ -379,11 +360,10 @@ api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY"
 st.sidebar.markdown("### Thyroid CDSS")
 st.sidebar.caption("Clinical Decision Support System")
 st.sidebar.markdown("---")
-best_metrics = metadata["performance_metrics"][metadata["best_model"]]
-st.sidebar.metric("Model Accuracy", f"{best_metrics['accuracy']:.1%}")
-st.sidebar.markdown(f"**Model:** {metadata['best_model']}")
+st.sidebar.metric("Test Accuracy", _pct(headline["accuracy"]))
+st.sidebar.markdown(f"**Model:** {bundle.model_name}")
 st.sidebar.markdown(f"**Features:** {len(features)}")
-st.sidebar.markdown(f"**Dataset:** {metadata['dataset_size']:,} patients")
+st.sidebar.markdown(f"**Dataset:** {bundle.dataset_size:,} synthetic records")
 st.sidebar.markdown("---")
 st.sidebar.caption("RAG index: 25 documents")
 st.sidebar.caption(f"LLM: {'API connected' if api_key else 'Template mode'}")
@@ -684,15 +664,13 @@ elif page == "Model Performance":
     st.title("Model Performance")
 
     c1, c2, c3, c4 = st.columns(4)
-    best = metadata["best_model"]
-    m = metadata["performance_metrics"][best]
-    c1.metric("Best Model", best)
-    c2.metric("Accuracy", f"{m['accuracy']:.1%}")
-    c3.metric("Precision", f"{m['precision']:.1%}")
-    c4.metric("F1 Score", f"{m['f1_score']:.1%}")
+    c1.metric("Selected Model", bundle.model_name)
+    c2.metric("Test Accuracy", _pct(headline["accuracy"]))
+    c3.metric("Macro F1", _pct(headline["f1_macro"]))
+    c4.metric("Majority Baseline", _pct(headline["baseline"]))
 
-    st.markdown("### All Models Comparison")
-    perf_df = pd.DataFrame(metadata["performance_metrics"]).T
+    st.markdown("### All Models Comparison (validation split)")
+    perf_df = pd.DataFrame(comparison_table(metadata)).T
     st.dataframe(perf_df.style.format("{:.4f}").highlight_max(axis=0, color="#dcfce7"),
                  use_container_width=True)
 
