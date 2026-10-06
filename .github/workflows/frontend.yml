@@ -1,0 +1,63 @@
+name: frontend
+
+on:
+  push:
+    branches: [main]
+    paths: ["frontend/**", "api/**", "model_registry.py", "models/**", "Dockerfile.api", "requirements-api.txt", "docker-compose.yml", ".github/workflows/frontend.yml"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  images:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start the stack
+        run: docker compose up --build --detach --wait --wait-timeout 180
+
+      - name: Smoke test through nginx
+        run: |
+          curl -fsS http://localhost:8080/ | grep -q "Thyroid panel review"
+          curl -fsS http://localhost:8080/api/health
+          curl -fsS -X POST http://localhost:8080/api/predict \
+            -H "Content-Type: application/json" -d '{"TSH":15,"T4":60}' | tee predict.json
+          grep -q '"prediction":"hypothyroid"' predict.json
+          curl -fsS -X POST http://localhost:8080/api/explain \
+            -H "Content-Type: application/json" -d '{"TSH":15,"T4":60}' | grep -q '"contributions"'
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Push images to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          for svc in api web; do
+            docker tag thyroid-$svc:local ghcr.io/$owner/thyroid-$svc:${{ github.sha }}
+            docker tag thyroid-$svc:local ghcr.io/$owner/thyroid-$svc:latest
+            docker push ghcr.io/$owner/thyroid-$svc:${{ github.sha }}
+            docker push ghcr.io/$owner/thyroid-$svc:latest
+          done
