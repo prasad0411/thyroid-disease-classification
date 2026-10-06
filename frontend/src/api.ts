@@ -39,9 +39,11 @@ export class ApiError extends Error {
 }
 
 const BASE: string = import.meta.env?.VITE_API_BASE ?? '/api';
-const TIMEOUT_MS = 10_000;
-export const UNREACHABLE =
-  'Cannot reach the prediction service. Start it from the repo root with: uvicorn api.predict:app --port 8000';
+const TIMEOUT_MS = 30_000; // Cloud Run scales to zero; the first request after idle can take ~15s
+const IS_LOCAL = typeof location !== 'undefined' && ['localhost', '127.0.0.1'].includes(location.hostname);
+export const UNREACHABLE = IS_LOCAL
+  ? 'Cannot reach the prediction service. Start it from the repo root with: uvicorn api.predict:app --port 8000'
+  : 'The prediction service is not responding right now. Please try again in a moment.';
 const GATEWAY_STATUSES = new Set([502, 503, 504]);
 
 interface FastApiValidationItem {

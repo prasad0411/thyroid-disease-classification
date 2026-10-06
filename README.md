@@ -2,7 +2,7 @@
 
 [![frontend](https://github.com/prasad0411/thyroid-disease-classification/actions/workflows/frontend.yml/badge.svg)](https://github.com/prasad0411/thyroid-disease-classification/actions/workflows/frontend.yml)
 [![ml-integrity](https://github.com/prasad0411/thyroid-disease-classification/actions/workflows/ci.yml/badge.svg)](https://github.com/prasad0411/thyroid-disease-classification/actions/workflows/ci.yml)
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Streamlit-FF4B4B?logo=streamlit)](https://thyroid-disease-classification.streamlit.app/)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-React_app-0B5CAD)](https://prasad0411.github.io/thyroid-disease-classification/)
 [![Paper](https://img.shields.io/badge/Published-Springer_2024-blue)](https://link.springer.com/chapter/10.1007/978-981-97-6106-7_9)
 
 Clinical decision support for thyroid function panels. A clinician enters TSH, T3, total T4, and T4 uptake with brief history; the app classifies the panel as negative, hypothyroid, or hyperthyroid, plots every analyte against its reference interval, and explains each prediction with SHAP so the reasoning is visible, not just the answer.
@@ -15,6 +15,9 @@ Clinical decision support for thyroid function panels. A clinician enters TSH, T
 ![Hyperthyroid report](docs/screenshots/report-hyper.png)
 <img src="docs/screenshots/report-mobile.png" alt="Mobile report" width="320">
 </details>
+
+**Live app:** https://prasad0411.github.io/thyroid-disease-classification/  
+Frontend on GitHub Pages, API on Google Cloud Run. The original Streamlit interface is still available as the [Streamlit version](https://thyroid-disease-classification.streamlit.app/).
 
 ## Run it
 
