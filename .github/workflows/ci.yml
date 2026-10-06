@@ -1,0 +1,123 @@
+name: ml-integrity
+
+# Guards the failure mode that already happened once in this repo: four
+# features were silently derived from the target label, letting a depth 4
+# decision tree score 94.3% on those flags alone. This workflow fails the
+# build if any single feature or the clinical flag subset can recover the
+# target, so the leak cannot come back unnoticed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  leakage-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install scikit-learn pandas numpy imbalanced-learn xgboost
+
+      - name: Leakage audit (fails on regression)
+        run: |
+          python - <<'PY'
+          from data_generator import generate_medical_dataset, leakage_audit
+          df = generate_medical_dataset(20000, verbose=False)
+          r = leakage_audit(df)
+          lift = r["flag_accuracy"] - r["baseline"]
+          assert lift < 0.25, f"LEAKAGE REGRESSION: flags give {lift:+.4f} over baseline"
+          print(f"PASS: clinical flags give {lift:+.4f} over majority baseline")
+          PY
+
+      - name: No feature derived from target
+        run: |
+          python - <<'PY'
+          import ast, sys
+          src = open("data_generator.py").read()
+          tree = ast.parse(src)
+          # any comparison against the label array used to build a feature is a leak
+          bad = []
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Compare):
+                  seg = ast.get_source_segment(src, node) or ""
+                  if "targets ==" in seg or "label ==" in seg or "y ==" in seg:
+                      bad.append(seg.strip()[:70])
+          leaks = [b for b in bad if "latent" not in b]
+          if leaks:
+              print("Comparisons against the label found in the generator:")
+              for b in leaks: print("  ", b)
+              sys.exit(1)
+          print("PASS: no feature construction reads the label")
+          PY
+
+  methodology:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: pip install scikit-learn pandas numpy
+
+      - name: Split happens before feature selection
+        run: |
+          python - <<'PY'
+          import ast, sys
+          raw = open("train.py").read()
+          tree = ast.parse(raw)
+          # Strip docstrings so the historical bug quoted in documentation does
+          # not trip the check on itself.
+          for node in ast.walk(tree):
+              if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef)):
+                  if (node.body and isinstance(node.body[0], ast.Expr)
+                          and isinstance(node.body[0].value, ast.Constant)
+                          and isinstance(node.body[0].value.value, str)):
+                      node.body.pop(0)
+          src = ast.unparse(tree)
+          split, rfe = src.find("train_test_split("), src.find("RFE(")
+          if rfe > -1 and split > -1 and rfe < split:
+              sys.exit("FAIL: RFE appears before train_test_split")
+          for pat in ["selector.fit(X, y_encoded)", "sel.fit(X, y)"]:
+              if pat in src:
+                  sys.exit(f"FAIL: feature selector fit on the full dataset -> {pat}")
+          print("PASS: feature selection is fit after the split")
+          PY
+
+      - name: Model selection does not read the test set
+        run: |
+          python - <<'PY'
+          import sys
+          src = open("train.py").read()
+          if "VAL_SIZE" not in src and "X_va" not in src:
+              sys.exit("FAIL: no validation split, selection would use test")
+          for pat in ["max(results, key=lambda k: results[k]['f1_score']",
+                      "key=lambda k: test"]:
+              if pat in src:
+                  sys.exit(f"FAIL: model selected on test metric -> {pat}")
+          print("PASS: selection uses a validation split")
+          PY
+
+      - name: Cross validation with variance reported
+        run: |
+          python - <<'PY'
+          import sys
+          src = open("train.py").read()
+          if "StratifiedKFold" not in src:
+              sys.exit("FAIL: no StratifiedKFold, single split results only")
+          if "std" not in src:
+              sys.exit("FAIL: CV variance not reported")
+          print("PASS: k-fold CV present and variance reported")
+          PY

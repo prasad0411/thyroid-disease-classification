@@ -1,284 +1,272 @@
 """
-Thyroid Disease Classification System - Main Training Pipeline
-Production Machine Learning Pipeline
+Thyroid Disease Classification - training pipeline (methodologically corrected).
 
-Author: Prasad Kanade
-Institution: Northeastern University
-Contact: kanade.pra@northeastern.edu
+FOUR DEFECTS FIXED FROM THE PREVIOUS VERSION
+--------------------------------------------
+1. FEATURE SELECTION LEAK
+   Old: selector.fit(X, y_encoded) ran on the FULL dataset, then split.
+   Test rows influenced which features were chosen. evaluate.py had this right
+   but train.py did not, and train.py is what wrote the deployed .pkl files.
+   Now: split first, RFE fit on the training fold only.
+
+2. SMOTE APPLIED OUTSIDE CROSS VALIDATION
+   Old: SMOTE ran once on the whole training set before any CV.
+   Synthetic minority points derived from a sample can land in the validation
+   fold that scored it, inflating minority recall.
+   Now: SMOTE lives inside an imblearn Pipeline so it refits per fold.
+
+3. MODEL SELECTION ON THE TEST SET
+   Old: best_model = max(results, key=test f1). Choosing among three models by
+   test score makes the reported test number optimistically biased.
+   Now: three way split. Selection on validation, test touched exactly once.
+
+4. SINGLE SPLIT, SINGLE SEED, NO UNCERTAINTY
+   Old: one train_test_split at random_state=42, no CV, no variance estimate.
+   Now: StratifiedKFold 5 fold on the training set, reported as mean +/- std.
+
+ALSO ADDED
+   Probability calibration with CalibratedClassifierCV plus Brier score, so
+   predicted probabilities are usable clinically rather than only ranked.
+   Subgroup metrics by sex and age band for the model card.
+   experiments.json emitted from code rather than hand authored.
 
 Execution: python train.py
 """
 
-import pandas as pd
-import numpy as np
-import joblib
 import json
 import logging
 import warnings
 from datetime import datetime
 
-warnings.filterwarnings('ignore')
+import joblib
+import numpy as np
+import pandas as pd
 
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.feature_selection import RFE
-from sklearn.metrics import (classification_report, confusion_matrix, 
-                            accuracy_score, precision_recall_fscore_support)
+warnings.filterwarnings("ignore")
+
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+from sklearn.feature_selection import RFE
+from sklearn.metrics import (accuracy_score, brier_score_loss,
+                             classification_report, confusion_matrix, f1_score,
+                             log_loss)
+from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 
-# Import project modules
 from config import *
-from data_generator import generate_medical_dataset
-from utils import (cleanup_previous_artifacts, setup_directories,
-                  plot_confusion_matrix, plot_feature_importance,
-                  plot_model_comparison, plot_shap_summary)
+from data_generator import AUDIT_COLUMNS, generate_medical_dataset, leakage_audit
 
-# Optional dependencies
 try:
     from imblearn.over_sampling import SMOTE
-    SMOTE_AVAILABLE = True
+    from imblearn.pipeline import Pipeline as ImbPipeline
+    SMOTE_OK = True
 except ImportError:
-    SMOTE_AVAILABLE = False
+    SMOTE_OK = False
 
 try:
     import xgboost as xgb
-    XGB_AVAILABLE = True
+    XGB_OK = True
 except ImportError:
-    XGB_AVAILABLE = False
-
-try:
-    import shap
-    SHAP_AVAILABLE = True
-except ImportError:
-    SHAP_AVAILABLE = False
+    XGB_OK = False
 
 
 def setup_logging():
-    """Configure logging"""
+    OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(OUTPUTS_DIR / 'training.log'),
-            logging.StreamHandler()
-        ]
-    )
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[logging.FileHandler(OUTPUTS_DIR / "training.log"), logging.StreamHandler()])
     return logging.getLogger()
 
 
+def build_estimators():
+    est = {}
+    if XGB_OK:
+        est["XGBoost"] = xgb.XGBClassifier(**XGBOOST_PARAMS)
+    est["RandomForest"] = RandomForestClassifier(**RANDOMFOREST_PARAMS)
+    if len(est) > 1:
+        est["Ensemble"] = VotingClassifier(
+            estimators=[(k, v) for k, v in est.items()], voting="soft", n_jobs=-1)
+    return est
+
+
+def wrap(estimator):
+    """SMOTE inside the pipeline so it refits per CV fold."""
+    if SMOTE_OK:
+        return ImbPipeline([("smote", SMOTE(random_state=RANDOM_STATE)),
+                            ("clf", estimator)])
+    return estimator
+
+
+def subgroup_metrics(model, X, y_true, meta, classes):
+    """Per subgroup accuracy and macro F1 for the model card."""
+    pred = model.predict(X)
+    out = {}
+    for label, mask in [
+        ("sex_0", meta["sex"] == 0), ("sex_1", meta["sex"] == 1),
+        ("age_under_40", meta["age"] < 40),
+        ("age_40_to_65", (meta["age"] >= 40) & (meta["age"] < 65)),
+        ("age_65_plus", meta["age"] >= 65),
+        ("subclinical", meta["subclinical"] == 1),
+        ("overt", meta["subclinical"] == 0),
+    ]:
+        m = np.asarray(mask)
+        if m.sum() < 40:
+            continue
+        out[label] = {"n": int(m.sum()),
+                      "accuracy": float(accuracy_score(y_true[m], pred[m])),
+                      "f1_macro": float(f1_score(y_true[m], pred[m], average="macro",
+                                                 zero_division=0))}
+    accs = [v["accuracy"] for v in out.values()]
+    out["_max_disparity"] = float(max(accs) - min(accs)) if accs else 0.0
+    return out
+
+
 def main():
-    """Main training pipeline"""
-    
-    # Initialize
-    cleanup_previous_artifacts()
-    setup_directories()
-    logger = setup_logging()
-    
-    print("\n" + "="*80)
-    print("THYROID DISEASE CLASSIFICATION SYSTEM")
-    print("Production Machine Learning Pipeline")
-    print("="*80)
-    print("\nDeveloper: Prasad Kanade")
-    print("Institution: Northeastern University")
-    print("Techniques: XGBoost, SMOTE, SHAP, RFE")
-    print("="*80 + "\n")
-    
-    # Step 1: Data Acquisition
-    logger.info("="*80)
-    logger.info("PIPELINE STAGE 1: DATA ACQUISITION AND PREPARATION")
-    logger.info("="*80)
-    
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    log = setup_logging()
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    log.info("STAGE 1  data generation and leakage audit")
     df = generate_medical_dataset()
-    X = df.drop('target', axis=1)
-    y = df['target']
-    
-    label_encoder = LabelEncoder()
-    y_encoded = label_encoder.fit_transform(y)
-    
-    logger.info(f"Dataset loaded: {len(X):,} samples, {len(X.columns)} features")
-    logger.info(f"Target classes: {list(label_encoder.classes_)}")
-    
-    # Step 2: Feature Selection
-    logger.info("\n" + "="*80)
-    logger.info("PIPELINE STAGE 2: FEATURE SELECTION (RFE)")
-    logger.info("="*80)
-    
-    estimator = RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1)
-    selector = RFE(estimator, n_features_to_select=N_FEATURES_SELECTED, step=1)
-    selector.fit(X, y_encoded)
-    
-    selected_features = X.columns[selector.support_].tolist()
-    X_selected = X[selected_features]
-    
-    logger.info(f"Dimensionality reduction: {len(X.columns)} → {len(selected_features)} features")
-    logger.info(f"Selected features: {selected_features}")
-    
-    # Step 3: Train-Test Split
-    logger.info("\n" + "="*80)
-    logger.info("PIPELINE STAGE 3: TRAIN-TEST PARTITIONING")
-    logger.info("="*80)
-    
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_selected, y_encoded,
-        test_size=TEST_SIZE,
-        random_state=RANDOM_STATE,
-        stratify=y_encoded
-    )
-    
-    logger.info(f"Training set: {len(X_train):,} samples")
-    logger.info(f"Test set: {len(X_test):,} samples")
-    
-    # Step 4: Feature Scaling
-    logger.info("\n" + "="*80)
-    logger.info("PIPELINE STAGE 4: FEATURE SCALING")
-    logger.info("="*80)
-    
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    
-    logger.info("Normalization: StandardScaler applied")
-    
-    # Step 5: SMOTE
-    if SMOTE_AVAILABLE:
-        logger.info("\n" + "="*80)
-        logger.info("PIPELINE STAGE 5: CLASS IMBALANCE HANDLING (SMOTE)")
-        logger.info("="*80)
-        
-        logger.info(f"Pre-balancing: {dict(zip(*np.unique(y_train, return_counts=True)))}")
-        
-        smote = SMOTE(random_state=RANDOM_STATE, sampling_strategy='auto')
-        X_train_balanced, y_train_balanced = smote.fit_resample(X_train_scaled, y_train)
-        
-        logger.info(f"Post-balancing: {dict(zip(*np.unique(y_train_balanced, return_counts=True)))}")
-    else:
-        X_train_balanced, y_train_balanced = X_train_scaled, y_train
-        logger.warning("SMOTE unavailable - proceeding without balancing")
-    
-    # Step 6: Model Training
-    logger.info("\n" + "="*80)
-    logger.info("PIPELINE STAGE 6: MODEL TRAINING")
-    logger.info("="*80)
-    
-    models = {}
-    
-    if XGB_AVAILABLE:
-        logger.info("Training XGBoost...")
-        models['XGBoost'] = xgb.XGBClassifier(**XGBOOST_PARAMS)
-        models['XGBoost'].fit(X_train_balanced, y_train_balanced)
-    
-    logger.info("Training Random Forest...")
-    models['RandomForest'] = RandomForestClassifier(**RANDOMFOREST_PARAMS)
-    models['RandomForest'].fit(X_train_balanced, y_train_balanced)
-    
-    if len(models) > 1:
-        logger.info("Creating Ensemble...")
-        models['Ensemble'] = VotingClassifier(
-            estimators=list(models.items()),
-            voting='soft',
-            n_jobs=-1
-        )
-        models['Ensemble'].fit(X_train_balanced, y_train_balanced)
-    
-    logger.info(f"Total models trained: {len(models)}")
-    
-    # Step 7: Model Evaluation
-    logger.info("\n" + "="*80)
-    logger.info("PIPELINE STAGE 7: MODEL EVALUATION")
-    logger.info("="*80)
-    
-    results = {}
-    
-    for model_name, model in models.items():
-        y_pred = model.predict(X_test_scaled)
-        
-        accuracy = accuracy_score(y_test, y_pred)
-        precision, recall, f1, _ = precision_recall_fscore_support(
-            y_test, y_pred, average='weighted', zero_division=0
-        )
-        
-        logger.info(f"\n{model_name} Performance:")
-        logger.info(f"  Accuracy:  {accuracy:.4f}")
-        logger.info(f"  Precision: {precision:.4f}")
-        logger.info(f"  Recall:    {recall:.4f}")
-        logger.info(f"  F1-Score:  {f1:.4f}")
-        
-        results[model_name] = {
-            'accuracy': accuracy,
-            'precision': precision,
-            'recall': recall,
-            'f1_score': f1
-        }
-        
-        # Visualizations
-        cm = confusion_matrix(y_test, y_pred)
-        plot_confusion_matrix(cm, label_encoder.classes_, model_name)
-        
-        if hasattr(model, 'feature_importances_'):
-            plot_feature_importance(model.feature_importances_, selected_features, model_name)
-    
-    results_df = pd.DataFrame(results).T
-    plot_model_comparison(results_df)
-    
-    # Step 8: SHAP Explainability
-    if SHAP_AVAILABLE and 'XGBoost' in models:
-        logger.info("\n" + "="*80)
-        logger.info("PIPELINE STAGE 8: MODEL EXPLAINABILITY (SHAP)")
-        logger.info("="*80)
-        
-        try:
-            explainer = shap.TreeExplainer(models['XGBoost'])
-            shap_values = explainer.shap_values(X_test_scaled[:100])
-            plot_shap_summary(shap_values, X_test_scaled[:100], selected_features)
-            logger.info("SHAP analysis completed")
-        except Exception as e:
-            logger.warning(f"SHAP analysis failed: {str(e)}")
-    
-    # Step 9: Model Persistence
-    logger.info("\n" + "="*80)
-    logger.info("PIPELINE STAGE 9: MODEL PERSISTENCE")
-    logger.info("="*80)
-    
-    best_model_name = max(results, key=lambda k: results[k]['f1_score'])
-    best_model = models[best_model_name]
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    joblib.dump(best_model, MODELS_DIR / f'best_model_{timestamp}.pkl')
-    joblib.dump(scaler, MODELS_DIR / f'scaler_{timestamp}.pkl')
-    joblib.dump(label_encoder, MODELS_DIR / f'label_encoder_{timestamp}.pkl')
-    
-    metadata = {
-        'execution_timestamp': timestamp,
-        'best_model': best_model_name,
-        'dataset_size': len(df),
-        'features_selected': selected_features,
-        'target_classes': list(label_encoder.classes_),
-        'performance_metrics': {
-            model: {metric: float(value) for metric, value in metrics.items()}
-            for model, metrics in results.items()
-        }
+    audit = leakage_audit(df)
+
+    meta_cols = df[["sex", "age", "subclinical"]].copy()
+    X = df.drop(columns=AUDIT_COLUMNS + ["target"])
+    le = LabelEncoder()
+    y = le.fit_transform(df["target"])
+    log.info(f"{len(X):,} rows, {X.shape[1]} features, classes {list(le.classes_)}")
+
+    log.info("STAGE 2  three way split, stratified")
+    X_tmp, X_te, y_tmp, y_te, m_tmp, m_te = train_test_split(
+        X, y, meta_cols, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y)
+    X_tr, X_va, y_tr, y_va, m_tr, m_va = train_test_split(
+        X_tmp, y_tmp, m_tmp, test_size=VAL_SIZE / (1 - TEST_SIZE),
+        random_state=RANDOM_STATE, stratify=y_tmp)
+    log.info(f"train {len(X_tr):,} | val {len(X_va):,} | test {len(X_te):,}")
+
+    log.info("STAGE 3  RFE on the training fold only")
+    sel = RFE(RandomForestClassifier(n_estimators=100, random_state=RANDOM_STATE, n_jobs=-1),
+              n_features_to_select=N_FEATURES_SELECTED, step=1).fit(X_tr, y_tr)
+    feats = X_tr.columns[sel.support_].tolist()
+    X_tr, X_va, X_te = X_tr[feats], X_va[feats], X_te[feats]
+    log.info(f"{X.shape[1]} -> {len(feats)} features: {feats}")
+
+    log.info("STAGE 4  scaling fit on train only")
+    scaler = StandardScaler().fit(X_tr)
+    Xtr, Xva, Xte = scaler.transform(X_tr), scaler.transform(X_va), scaler.transform(X_te)
+
+    log.info("STAGE 5  5 fold stratified CV on the training set, SMOTE inside folds")
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+    cv_results = {}
+    for name, est in build_estimators().items():
+        scores = cross_val_score(wrap(est), Xtr, y_tr, cv=cv,
+                                 scoring="f1_macro", n_jobs=-1)
+        cv_results[name] = {"f1_macro_mean": float(scores.mean()),
+                            "f1_macro_std": float(scores.std()),
+                            "folds": [float(s) for s in scores]}
+        log.info(f"  {name:14s} CV f1_macro {scores.mean():.4f} +/- {scores.std():.4f}")
+
+    log.info("STAGE 6  fit on train, select on validation")
+    val_results, fitted = {}, {}
+    for name, est in build_estimators().items():
+        m = wrap(est).fit(Xtr, y_tr)
+        fitted[name] = m
+        pv = m.predict(Xva)
+        val_results[name] = {"accuracy": float(accuracy_score(y_va, pv)),
+                             "f1_macro": float(f1_score(y_va, pv, average="macro",
+                                                        zero_division=0))}
+        log.info(f"  {name:14s} val acc {val_results[name]['accuracy']:.4f} "
+                 f"f1_macro {val_results[name]['f1_macro']:.4f}")
+
+    best_name = max(val_results, key=lambda k: val_results[k]["f1_macro"])
+    log.info(f"selected on validation: {best_name}")
+
+    log.info("STAGE 7  probability calibration on the validation split")
+    # sklearn >= 1.6 removed cv="prefit" in favour of FrozenEstimator.
+    try:
+        from sklearn.frozen import FrozenEstimator
+        calibrated = CalibratedClassifierCV(
+            FrozenEstimator(fitted[best_name]), method="isotonic")
+    except ImportError:
+        calibrated = CalibratedClassifierCV(
+            fitted[best_name], method="isotonic", cv="prefit")
+    calibrated.fit(Xva, y_va)
+
+    log.info("STAGE 8  final evaluation, test set touched once")
+    pred = calibrated.predict(Xte)
+    proba = calibrated.predict_proba(Xte)
+    test_acc = float(accuracy_score(y_te, pred))
+    test_f1 = float(f1_score(y_te, pred, average="macro", zero_division=0))
+    rep = classification_report(y_te, pred, target_names=le.classes_,
+                                output_dict=True, zero_division=0)
+
+    brier_raw, brier_cal = {}, {}
+    raw_proba = fitted[best_name].predict_proba(Xte)
+    for i, c in enumerate(le.classes_):
+        yt = (y_te == i).astype(int)
+        brier_raw[c] = float(brier_score_loss(yt, raw_proba[:, i]))
+        brier_cal[c] = float(brier_score_loss(yt, proba[:, i]))
+
+    log.info(f"TEST accuracy {test_acc:.4f} | macro F1 {test_f1:.4f} "
+             f"| log loss {log_loss(y_te, proba):.4f}")
+    for c in le.classes_:
+        r = rep[c]
+        log.info(f"  {c:14s} P {r['precision']:.3f} R {r['recall']:.3f} "
+                 f"F1 {r['f1-score']:.3f} | brier {brier_raw[c]:.4f} -> {brier_cal[c]:.4f}")
+
+    sub = subgroup_metrics(calibrated, Xte, y_te, m_te, le.classes_)
+    log.info(f"max subgroup accuracy disparity: {sub['_max_disparity']:.4f}")
+
+    log.info("STAGE 9  persistence")
+    joblib.dump(calibrated, MODELS_DIR / f"best_model_{stamp}.pkl")
+    joblib.dump(scaler, MODELS_DIR / f"scaler_{stamp}.pkl")
+    joblib.dump(le, MODELS_DIR / f"label_encoder_{stamp}.pkl")
+
+    record = {
+        "experiment_id": f"exp_{stamp}",
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "generator": "causal v2, no feature derived from target",
+        "leakage_audit": {"majority_baseline": audit["baseline"],
+                          "clinical_flags_only": audit["flag_accuracy"],
+                          "lift_over_baseline": audit["flag_accuracy"] - audit["baseline"]},
+        "dataset_size": int(len(df)),
+        "split": {"train": int(len(Xtr)), "val": int(len(Xva)), "test": int(len(Xte))},
+        "features": {"original": int(X.shape[1]), "selected": len(feats), "names": feats},
+        "class_balancing": "SMOTE inside CV folds" if SMOTE_OK else "none",
+        "cv_5fold_train": cv_results,
+        "validation": val_results,
+        "selected_model": best_name,
+        "selection_criterion": "validation macro F1",
+        "calibration": {"method": "isotonic", "brier_raw": brier_raw,
+                        "brier_calibrated": brier_cal},
+        "test": {"accuracy": test_acc, "f1_macro": test_f1,
+                 "log_loss": float(log_loss(y_te, proba)),
+                 "per_class": {c: {k: float(v) for k, v in rep[c].items()}
+                               for c in le.classes_},
+                 "confusion_matrix": confusion_matrix(y_te, pred).tolist()},
+        "subgroups": sub,
+        "artifacts": {"model": f"best_model_{stamp}.pkl",
+                      "scaler": f"scaler_{stamp}.pkl",
+                      "label_encoder": f"label_encoder_{stamp}.pkl"},
     }
-    
-    with open(MODELS_DIR / f'metadata_{timestamp}.json', 'w') as f:
-        json.dump(metadata, f, indent=2)
-    
-    logger.info(f"Best model: {best_model_name}")
-    logger.info(f"F1-Score: {results[best_model_name]['f1_score']:.4f}")
-    
-    # Final Summary
-    print("\n" + "="*80)
-    print("PERFORMANCE SUMMARY")
-    print("="*80)
-    print(f"\n{results_df.to_string()}")
-    print(f"\nOptimal Model: {best_model_name}")
-    print(f"F1-Score: {results[best_model_name]['f1_score']:.4f}")
-    print("\n" + "="*80)
-    print("PIPELINE EXECUTION COMPLETED SUCCESSFULLY")
-    print("="*80 + "\n")
-    
-    logger.info("="*80)
-    logger.info("PIPELINE EXECUTION COMPLETED")
-    logger.info("="*80)
+
+    path = OUTPUTS_DIR / "experiments.json"
+    history = json.loads(path.read_text()) if path.exists() else []
+    if not isinstance(history, list):
+        history = []
+    history.append(record)
+    path.write_text(json.dumps(history, indent=2))
+    (MODELS_DIR / f"metadata_{stamp}.json").write_text(json.dumps(record, indent=2))
+
+    print("\n" + "=" * 72)
+    print(f"selected model      : {best_name}  (chosen on validation)")
+    print(f"CV macro F1 (train) : {cv_results[best_name]['f1_macro_mean']:.4f}"
+          f" +/- {cv_results[best_name]['f1_macro_std']:.4f}")
+    print(f"TEST accuracy       : {test_acc:.4f}")
+    print(f"TEST macro F1       : {test_f1:.4f}")
+    print(f"leak audit lift     : {audit['flag_accuracy'] - audit['baseline']:+.4f}")
+    print(f"subgroup disparity  : {sub['_max_disparity']:.4f}")
+    print("=" * 72 + "\n")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,184 @@
+{
+  "experiment_id": "exp_20260903_155027",
+  "timestamp": "2026-09-03T15:52:12",
+  "generator": "causal v2, no feature derived from target",
+  "leakage_audit": {
+    "majority_baseline": 0.7296866666666667,
+    "clinical_flags_only": 0.7534133333333334,
+    "lift_over_baseline": 0.023726666666666674
+  },
+  "dataset_size": 150000,
+  "split": {
+    "train": 90000,
+    "val": 30000,
+    "test": 30000
+  },
+  "features": {
+    "original": 17,
+    "selected": 12,
+    "names": [
+      "age",
+      "sex",
+      "TSH",
+      "T3",
+      "T4",
+      "T4U",
+      "FTI",
+      "on_thyroxine",
+      "on_antithyroid",
+      "sick",
+      "query_hypothyroid",
+      "query_hyperthyroid"
+    ]
+  },
+  "class_balancing": "SMOTE inside CV folds",
+  "cv_5fold_train": {
+    "XGBoost": {
+      "f1_macro_mean": 0.7268628585088975,
+      "f1_macro_std": 0.0043818501515367906,
+      "folds": [
+        0.7246960992864425,
+        0.7276926404493623,
+        0.7342064938427879,
+        0.7208057842608957,
+        0.7269132747049992
+      ]
+    },
+    "RandomForest": {
+      "f1_macro_mean": 0.7268884814002808,
+      "f1_macro_std": 0.002984507934730544,
+      "folds": [
+        0.7232690484738327,
+        0.728618789454238,
+        0.7314287495383917,
+        0.7240942603337501,
+        0.7270315592011918
+      ]
+    },
+    "Ensemble": {
+      "f1_macro_mean": 0.7273684719269006,
+      "f1_macro_std": 0.0038623586640972136,
+      "folds": [
+        0.7246342987218206,
+        0.7282999482988824,
+        0.7338208927227488,
+        0.7224166325653302,
+        0.7276705873257209
+      ]
+    }
+  },
+  "validation": {
+    "XGBoost": {
+      "accuracy": 0.7919666666666667,
+      "f1_macro": 0.7261349362329382
+    },
+    "RandomForest": {
+      "accuracy": 0.7892,
+      "f1_macro": 0.7257773116905936
+    },
+    "Ensemble": {
+      "accuracy": 0.7906,
+      "f1_macro": 0.7260574146693012
+    }
+  },
+  "selected_model": "XGBoost",
+  "selection_criterion": "validation macro F1",
+  "calibration": {
+    "method": "isotonic",
+    "brier_raw": {
+      "hyperthyroid": 0.06552161276340485,
+      "hypothyroid": 0.08652026951313019,
+      "negative": 0.15763047337532043
+    },
+    "brier_calibrated": {
+      "hyperthyroid": 0.03605826924093755,
+      "hypothyroid": 0.07094144522253153,
+      "negative": 0.10105326622013854
+    }
+  },
+  "test": {
+    "accuracy": 0.8509333333333333,
+    "f1_macro": 0.7213323596259976,
+    "log_loss": 0.37285376565025624,
+    "per_class": {
+      "hyperthyroid": {
+        "precision": 0.8714285714285714,
+        "recall": 0.43865168539325844,
+        "f1-score": 0.5835575485799701,
+        "support": 2225.0
+      },
+      "hypothyroid": {
+        "precision": 0.8795740032768978,
+        "recall": 0.5474167233174712,
+        "f1-score": 0.6748376283260005,
+        "support": 5884.0
+      },
+      "negative": {
+        "precision": 0.8458640653501467,
+        "recall": 0.9744187108857522,
+        "f1-score": 0.9056019019720223,
+        "support": 21891.0
+      }
+    },
+    "confusion_matrix": [
+      [
+        976,
+        23,
+        1226
+      ],
+      [
+        2,
+        3221,
+        2661
+      ],
+      [
+        142,
+        418,
+        21331
+      ]
+    ]
+  },
+  "subgroups": {
+    "sex_0": {
+      "n": 20444,
+      "accuracy": 0.854920759146938,
+      "f1_macro": 0.7287189541953238
+    },
+    "sex_1": {
+      "n": 9556,
+      "accuracy": 0.8424026789451653,
+      "f1_macro": 0.7051950946482196
+    },
+    "age_under_40": {
+      "n": 9996,
+      "accuracy": 0.8487394957983193,
+      "f1_macro": 0.717001664217412
+    },
+    "age_40_to_65": {
+      "n": 14914,
+      "accuracy": 0.8527557999195386,
+      "f1_macro": 0.7269471856161616
+    },
+    "age_65_plus": {
+      "n": 5090,
+      "accuracy": 0.849901768172888,
+      "f1_macro": 0.7125886526883328
+    },
+    "subclinical": {
+      "n": 4271,
+      "accuracy": 0.8538983844532896,
+      "f1_macro": 0.4982385868985057
+    },
+    "overt": {
+      "n": 25729,
+      "accuracy": 0.850441136460803,
+      "f1_macro": 0.7376081588795514
+    },
+    "_max_disparity": 0.012518080201772697
+  },
+  "artifacts": {
+    "model": "best_model_20260903_155027.pkl",
+    "scaler": "scaler_20260903_155027.pkl",
+    "label_encoder": "label_encoder_20260903_155027.pkl"
+  }
+}
