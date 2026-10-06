@@ -53,8 +53,10 @@ export function PatientForm({ submitting, onSubmit }: Props) {
   }
 
   return (
-    <form className="card" onSubmit={handleSubmit} noValidate aria-label="Patient lab panel">
+    <form className="entry" onSubmit={handleSubmit} noValidate aria-label="Patient lab panel">
+      <h2 className="entry-title">Patient panel</h2>
       <div className="examples" role="group" aria-label="Load an example patient">
+        <span className="examples-label">Examples</span>
         {EXAMPLES.map((ex) => (
           <button key={ex.label} type="button" className="chip" onClick={() => load(ex.patient)}>
             {ex.label}

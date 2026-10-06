@@ -5,9 +5,9 @@ export function HistoryPanel() {
   const { state, dispatch } = useHistory();
   if (state.entries.length === 0) return null;
   return (
-    <section className="card">
+    <section className="history">
       <div className="history-head">
-        <h3>Session history</h3>
+        <h3>Earlier results this session</h3>
         <button type="button" onClick={() => dispatch({ type: 'clear' })}>
           Clear
         </button>

@@ -137,3 +137,50 @@ def comparison_table(meta):
     if isinstance(meta.get("validation"), dict):
         return meta["validation"]
     return meta.get("performance_metrics", {})
+
+
+_EXPLAINERS = {}
+
+
+def explain_one(bundle, row, explainer_factory=None):
+    """Prediction plus per feature SHAP contributions for the predicted class.
+
+    SHAP runs on the XGBoost model inside the calibration wrapper, so values are
+    log odds contributions before calibration. The class explained is the one
+    the calibrated model predicted, mapped to its column in the tree model.
+    """
+    import numpy as np
+
+    row = add_derived(row)
+    pred = predict_one(bundle, row)
+    tree = unwrap_tree_model(bundle.model)
+    explainer = _EXPLAINERS.get(bundle.timestamp)
+    if explainer is None:
+        if explainer_factory is None:
+            import shap
+            explainer_factory = shap.TreeExplainer
+        explainer = _EXPLAINERS[bundle.timestamp] = explainer_factory(tree)
+
+    X = bundle.scaler.transform(pd.DataFrame([{f: row[f] for f in bundle.features}]))
+    sv = explainer.shap_values(X)
+    enc = int(bundle.label_encoder.transform([pred["prediction"]])[0])
+    classes = list(getattr(tree, "classes_", range(len(bundle.label_encoder.classes_))))
+    pos = classes.index(enc)
+
+    if isinstance(sv, list):
+        vals = np.asarray(sv[pos]).reshape(-1)
+    else:
+        arr = np.asarray(sv)
+        vals = arr[0, :, pos] if arr.ndim == 3 else arr.reshape(-1)
+    if len(vals) != len(bundle.features):
+        raise ValueError(f"SHAP returned {len(vals)} values for {len(bundle.features)} features")
+
+    ev = np.atleast_1d(np.asarray(explainer.expected_value, dtype=float))
+    base = float(ev[pos] if ev.size > 1 else ev[0])
+    contributions = sorted(
+        ({"feature": f, "value": float(row[f]), "shap": float(v)} for f, v in zip(bundle.features, vals)),
+        key=lambda c: abs(c["shap"]),
+        reverse=True,
+    )
+    return {**pred, "base_value": base, "contributions": contributions,
+            "method": "TreeSHAP on XGBoost before calibration (log odds)"}

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiError, formatDetail, predict } from '../api';
+import { ApiError, UNREACHABLE, formatDetail, predict } from '../api';
 import { DEFAULT_PATIENT } from '../validation';
 
 const json = (status: number, body: unknown) =>
@@ -26,6 +26,11 @@ describe('api client', () => {
     const err = await predict(DEFAULT_PATIENT, fetchMock).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).status).toBe(0);
+  });
+
+  it('treats a proxy 502 as the service being down', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('Bad Gateway', { status: 502 }));
+    await expect(predict(DEFAULT_PATIENT, fetchMock)).rejects.toMatchObject({ status: 502, message: UNREACHABLE });
   });
 
   it('formats string and unknown details', () => {

@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from model_registry import load_latest, predict_one
+from model_registry import explain_one, load_latest, predict_one
 
 bundle = load_latest()
 
@@ -71,3 +71,24 @@ def predict(patient: PatientInput):
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return PredictionOutput(**out, features_used=bundle.features, model_version=bundle.timestamp)
+
+
+class Contribution(BaseModel):
+    feature: str
+    value: float
+    shap: float
+
+
+class ExplanationOutput(PredictionOutput):
+    base_value: float
+    contributions: list[Contribution]
+    method: str
+
+
+@app.post("/explain", response_model=ExplanationOutput)
+def explain(patient: PatientInput):
+    try:
+        out = explain_one(bundle, patient.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return ExplanationOutput(**out, features_used=bundle.features, model_version=bundle.timestamp)

@@ -17,6 +17,18 @@ export interface Prediction {
   model_version: string;
 }
 
+export interface Contribution {
+  feature: string;
+  value: number;
+  shap: number;
+}
+
+export interface Explanation extends Prediction {
+  base_value: number;
+  contributions: Contribution[];
+  method: string;
+}
+
 export class ApiError extends Error {
   readonly status: number;
   constructor(status: number, message: string) {
@@ -28,6 +40,9 @@ export class ApiError extends Error {
 
 const BASE: string = import.meta.env?.VITE_API_BASE ?? '/api';
 const TIMEOUT_MS = 10_000;
+export const UNREACHABLE =
+  'Cannot reach the prediction service. Start it from the repo root with: uvicorn api.predict:app --port 8000';
+const GATEWAY_STATUSES = new Set([502, 503, 504]);
 
 interface FastApiValidationItem {
   loc?: (string | number)[];
@@ -57,11 +72,12 @@ async function request<T>(path: string, init: RequestInit, fetchImpl: typeof fet
     res = await fetchImpl(`${BASE}${path}`, { ...init, signal: timeout.signal });
   } catch (err) {
     if (signal?.aborted) throw err;
-    throw new ApiError(0, 'Cannot reach the prediction service. Is the API running on port 8000?');
+    throw new ApiError(0, UNREACHABLE);
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);
   }
+  if (GATEWAY_STATUSES.has(res.status)) throw new ApiError(res.status, UNREACHABLE);
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
     try {
@@ -82,6 +98,14 @@ export function getModelInfo(signal?: AbortSignal, fetchImpl: typeof fetch = fet
 export function predict(patient: PatientInput, fetchImpl: typeof fetch = fetch): Promise<Prediction> {
   return request<Prediction>(
     '/predict',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patient) },
+    fetchImpl,
+  );
+}
+
+export function explain(patient: PatientInput, fetchImpl: typeof fetch = fetch): Promise<Explanation> {
+  return request<Explanation>(
+    '/explain',
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patient) },
     fetchImpl,
   );
