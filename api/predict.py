@@ -4,6 +4,7 @@ FastAPI prediction service for thyroid disease classification.
 Usage: uvicorn api.predict:app --reload   (run from the repo root)
 """
 import os
+import threading
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
@@ -13,6 +14,20 @@ from pydantic import BaseModel, Field
 from model_registry import explain_one, load_latest, predict_one
 
 bundle = load_latest()
+
+
+def _warm_explainer():
+    """Build the SHAP explainer in the background so the first /explain is fast."""
+    try:
+        explain_one(bundle, {"TSH": 2.5, "T3": 1.8, "T4": 105.0, "T4U": 1.0, "age": 45.0, "sex": 0,
+                             "on_thyroxine": 0, "on_antithyroid": 0, "sick": 0,
+                             "query_hypothyroid": 0, "query_hyperthyroid": 0})
+        print("explainer warm", flush=True)
+    except Exception as exc:  # never block startup
+        print(f"explainer warmup skipped: {exc}", flush=True)
+
+
+threading.Thread(target=_warm_explainer, daemon=True).start()
 
 app = FastAPI(title="Thyroid Disease Classifier API", version="2.0")
 app.add_middleware(

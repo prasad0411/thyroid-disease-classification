@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { Explanation as ExplanationData, ModelInfo, Prediction } from '../api';
 import { pct } from '../format';
-import { buildNote, formatResult } from '../note';
+import { buildNote, displayUnit, formatResult } from '../note';
+import { patientSummary } from '../patient';
 import { ANALYTES, PATTERN_TEXT, flagOf, valueOf } from '../reference';
 import type { PatientInput } from '../validation';
 import { Explanation } from './Explanation';
@@ -21,6 +22,8 @@ interface Props {
 
 export function Report({ patientId, patient, reportedAt, result, explanation, explainError, info }: Props) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [view, setView] = useState<'clinician' | 'patient'>('clinician');
+  const summary = patientSummary(patient, result, explanation?.contributions ?? null);
   const abnormal = ANALYTES.filter((a) => flagOf(a, valueOf(a, patient)) !== null).length;
 
   async function copyNote() {
@@ -35,6 +38,10 @@ export function Report({ patientId, patient, reportedAt, result, explanation, ex
 
   return (
     <article className={`report report-${result.prediction}`} role="status" aria-live="polite">
+      <div className="print-head" aria-hidden="true">
+        <strong>Thyroid Panel Review</strong>
+        <span>Endocrinology decision support report</span>
+      </div>
       <header className="report-bar">
         <dl className="report-meta">
           <div><dt>Patient</dt><dd>{patientId || 'Not recorded'}</dd></div>
@@ -42,6 +49,10 @@ export function Report({ patientId, patient, reportedAt, result, explanation, ex
           <div><dt>Reported</dt><dd>{reportedAt}</dd></div>
         </dl>
         <div className="report-actions">
+          <div className="segmented" role="group" aria-label="Report view">
+            <button type="button" aria-pressed={view === 'clinician'} onClick={() => setView('clinician')}>Clinician</button>
+            <button type="button" aria-pressed={view === 'patient'} onClick={() => setView('patient')}>Patient</button>
+          </div>
           <button type="button" onClick={copyNote}>
             {copyState === 'copied' ? 'Copied to clipboard' : 'Copy to note'}
           </button>
@@ -88,7 +99,10 @@ export function Report({ patientId, patient, reportedAt, result, explanation, ex
                       {a.name}
                       {a.derived && <span className="derived">calculated</span>}
                     </th>
-                    <td className={`num${flag ? ` flagged-${flag}` : ''}`}>{formatResult(v)}</td>
+                    <td className={`num${flag ? ` flagged-${flag}` : ''}`}>
+                      {formatResult(v)}
+                      {displayUnit(a.unit) && <span className="unit">{displayUnit(a.unit)}</span>}
+                    </td>
                     <td className="flag-col">
                       {flag && <span className={`flag-pill pill-${flag}`}>{flag === 'H' ? 'High' : 'Low'}</span>}
                     </td>
@@ -104,11 +118,25 @@ export function Report({ patientId, patient, reportedAt, result, explanation, ex
         </div>
       </section>
 
-      <Explanation
-        contributions={explanation?.contributions ?? null}
-        error={explainError}
-        className={result.prediction}
-      />
+      {view === 'clinician' ? (
+        <Explanation
+          contributions={explanation?.contributions ?? null}
+          error={explainError}
+          className={result.prediction}
+        />
+      ) : (
+        <section className="patient-view" aria-labelledby="patient-heading">
+          <h3 id="patient-heading" className="section-title">What these results mean</h3>
+          <ul className="patient-findings">
+            {summary.findings.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+          <p className="patient-overall">{summary.overall}</p>
+          {summary.influence && <p className="patient-influence">{summary.influence}</p>}
+          <p className="patient-next">Your clinician will go through these results with you and decide whether any further tests or follow up are needed.</p>
+        </section>
+      )}
 
       <footer className="report-foot">
         <p className="cds-note">Decision support output. Interpret alongside the history, examination, and other investigations.</p>

@@ -92,8 +92,34 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: 'Predict' }));
     await user.click(await screen.findByRole('button', { name: 'Copy to note' }));
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText.mock.calls[0][0]).toContain('TSH: 15.0 H (ref 0.4 to 4)');
+    expect(writeText.mock.calls[0][0]).toContain('TSH: 15.0 mIU/L H (ref 0.4 to 4)');
     expect(await screen.findByRole('button', { name: 'Copied to clipboard' })).toBeInTheDocument();
+  });
+
+  it('switches to a plain language patient view', async () => {
+    routeFetch(ALL_OK);
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(screen.getByRole('button', { name: 'Hypothyroid pattern' }));
+    await user.click(screen.getByRole('button', { name: 'Predict' }));
+    await user.click(await screen.findByRole('button', { name: 'Patient' }));
+    const report = screen.getByRole('status');
+    expect(within(report).getByRole('heading', { name: 'What these results mean' })).toBeInTheDocument();
+    expect(report).toHaveTextContent('is higher than the usual range');
+    expect(report).toHaveTextContent('influenced most by the TSH level');
+    expect(within(report).queryByText('What drove this result')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clinician' }));
+    expect(within(report).getByText('What drove this result')).toBeInTheDocument();
+  });
+
+  it('flags an out of range value while typing', async () => {
+    routeFetch({ '/model-info': () => json(200, MODEL_INFO) });
+    const user = userEvent.setup();
+    renderApp();
+    const tsh = screen.getByLabelText('TSH');
+    await user.clear(tsh);
+    await user.type(tsh, '12');
+    expect(screen.getAllByText('High').length).toBeGreaterThan(0);
   });
 
   it('still shows the prediction when the explanation fails', async () => {

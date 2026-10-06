@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { ANALYTES } from '../reference';
+import { ANALYTES, flagOf } from '../reference';
+import { displayUnit } from '../note';
 import {
   DEFAULT_PATIENT,
   FLAG_FIELDS,
@@ -66,9 +67,17 @@ export function PatientForm({ submitting, onSubmit }: Props) {
     const err = errors[key];
     const id = `lab-${key}`;
     const describedBy = [err ? `${id}-err` : null, hint ? `${id}-hint` : null].filter(Boolean).join(' ') || undefined;
+    const ref = REF[key];
+    const n = Number(labs[key]);
+    const liveFlag = ref && labs[key].trim() !== '' && Number.isFinite(n) ? flagOf(ref, n) : null;
+    const unit = ref ? displayUnit(ref.unit) : '';
     return (
       <div key={key} className="field">
-        <label htmlFor={id}>{spec.label}</label>
+        <div className="label-row">
+          <label htmlFor={id}>{spec.label}</label>
+          {liveFlag && <span className={`live-flag pill-${liveFlag}`}>{liveFlag === 'H' ? 'High' : 'Low'}</span>}
+        </div>
+        <div className={`input-group${unit ? ' has-suffix' : ''}`}>
         <input
           id={id}
           type="number"
@@ -81,6 +90,8 @@ export function PatientForm({ submitting, onSubmit }: Props) {
           aria-describedby={describedBy}
           onChange={(e) => setLabs((prev) => ({ ...prev, [key]: e.target.value }))}
         />
+        {unit && <span className="input-suffix" aria-hidden="true">{unit}</span>}
+        </div>
         {err ? (
           <span id={`${id}-err`} className="field-error">{err}</span>
         ) : (
@@ -138,7 +149,7 @@ export function PatientForm({ submitting, onSubmit }: Props) {
       <fieldset>
         <legend>Lab values</legend>
         <div className="grid grid-labs">
-          {PANEL.map((k) => labInput(k, `Ref ${REF[k].low} to ${REF[k].high}`))}
+          {PANEL.map((k) => labInput(k, `Ref ${REF[k].low} to ${REF[k].high}${displayUnit(REF[k].unit) ? ` ${displayUnit(REF[k].unit)}` : ''}`))}
         </div>
       </fieldset>
 

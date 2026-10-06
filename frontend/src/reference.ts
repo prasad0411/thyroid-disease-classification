@@ -12,15 +12,16 @@ export interface Analyte {
   max: number;
   log?: boolean;
   derived?: boolean;
+  unit: string;
 }
 
 // Intervals mirror REF_RANGES in app.py so both apps flag values identically.
 export const ANALYTES: readonly Analyte[] = [
-  { key: 'TSH', name: 'TSH', low: 0.4, high: 4.0, min: 0.01, max: 100, log: true },
-  { key: 'T3', name: 'T3', low: 0.8, high: 2.0, min: 0, max: 6 },
-  { key: 'T4', name: 'Total T4', low: 60, high: 120, min: 0, max: 250 },
-  { key: 'T4U', name: 'T4 uptake', low: 0.7, high: 1.2, min: 0, max: 2.5 },
-  { key: 'FTI', name: 'Free T4 index', low: 60, high: 120, min: 0, max: 250, derived: true },
+  { key: 'TSH', name: 'TSH', low: 0.4, high: 4.0, min: 0.01, max: 100, log: true, unit: 'mIU/L' },
+  { key: 'T3', name: 'T3', low: 0.8, high: 2.0, min: 0, max: 6, unit: 'ng/mL' },
+  { key: 'T4', name: 'Total T4', low: 60, high: 120, min: 0, max: 250, unit: 'nmol/L' },
+  { key: 'T4U', name: 'T4 uptake', low: 0.7, high: 1.2, min: 0, max: 2.5, unit: 'ratio' },
+  { key: 'FTI', name: 'Free T4 index', low: 60, high: 120, min: 0, max: 250, derived: true, unit: 'index' },
 ];
 
 export function fti(p: Pick<PatientInput, 'T4' | 'T4U'>): number {

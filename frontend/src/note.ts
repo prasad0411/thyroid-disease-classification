@@ -3,6 +3,11 @@ import { pct } from './format';
 import { ANALYTES, PATTERN_TEXT, featureLabel, flagOf, valueOf } from './reference';
 import type { PatientInput } from './validation';
 
+/** Ratio and index values are unitless on a lab report. */
+export function displayUnit(unit: string): string {
+  return unit === 'ratio' || unit === 'index' ? '' : unit;
+}
+
 export function formatResult(v: number): string {
   return v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
 }
@@ -24,7 +29,8 @@ export function buildNote(opts: {
     ...ANALYTES.map((a) => {
       const v = valueOf(a, patient);
       const flag = flagOf(a, v);
-      return `${a.name}: ${formatResult(v)}${flag ? ` ${flag}` : ''} (ref ${a.low} to ${a.high})`;
+      const unit = displayUnit(a.unit);
+      return `${a.name}: ${formatResult(v)}${unit ? ` ${unit}` : ''}${flag ? ` ${flag}` : ''} (ref ${a.low} to ${a.high})`;
     }),
     '',
     `Interpretation: ${PATTERN_TEXT[result.prediction] ?? result.prediction} (model probability ${pct(result.confidence, 0)}).`,

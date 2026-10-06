@@ -25,8 +25,8 @@ describe('buildNote', () => {
       reportedAt: 'Oct 6, 2026, 1:20 PM',
     });
     expect(note).toContain('Patient: MRN 100517, 45 y, female');
-    expect(note).toContain('TSH: 15.0 H (ref 0.4 to 4)');
-    expect(note).toContain('Total T4: 60.0 (ref 60 to 120)');
+    expect(note).toContain('TSH: 15.0 mIU/L H (ref 0.4 to 4)');
+    expect(note).toContain('Total T4: 60.0 nmol/L (ref 60 to 120)');
     expect(note).toContain('Free T4 index: 59.4 L (ref 60 to 120)');
     expect(note).toContain('Interpretation: Pattern consistent with hypothyroidism (model probability 98%).');
     expect(note).toContain('Main contributors: TSH 15 (+2.29), Total T4 60 (+1.69), T3 1.8 (\u22120.48).');

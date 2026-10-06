@@ -217,3 +217,35 @@ input[aria-invalid='true'] { border-color: var(--high); background: var(--high-s
     --low-soft: #eff8ff; --neg: #067647; --hypo: #b54708; --hyper: #b42318; --toward: #0b5cad; --away: #98a2b3;
   }
 }
+
+/* v4: units, live flags, view toggle, patient view, loading, print letterhead */
+.label-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; min-height: 1.2rem; }
+.live-flag { font-size: 0.68rem; font-weight: 600; padding: 0 0.4rem; border-radius: 4px; line-height: 1.4; }
+.input-group { position: relative; display: flex; align-items: center; }
+.input-group.has-suffix input { padding-right: 3.6rem; }
+.input-suffix { position: absolute; right: 0.6rem; font-size: 0.75rem; color: var(--ink-faint); pointer-events: none; }
+.unit { display: block; font-size: 0.7rem; font-weight: 400; color: var(--ink-faint); }
+.segmented { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; margin-right: 0.4rem; }
+.segmented button { border: none; border-radius: 0; padding: 0.4rem 0.8rem; background: var(--surface); }
+.segmented button + button { border-left: 1px solid var(--line-strong); }
+.segmented button[aria-pressed='true'] { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.patient-view { padding: 0 1.4rem 1.3rem; }
+.patient-view .section-title { padding-left: 0; padding-right: 0; }
+.patient-findings { margin: 0 0 0.8rem; padding-left: 1.1rem; display: grid; gap: 0.35rem; max-width: 68ch; }
+.patient-overall { margin: 0 0 0.5rem; font-weight: 500; max-width: 68ch; }
+.patient-influence, .patient-next { margin: 0 0 0.5rem; color: var(--ink-soft); max-width: 68ch; }
+.report-loading { padding: 1.75rem; }
+.skeleton { background: linear-gradient(90deg, var(--line) 0%, var(--surface-sub) 50%, var(--line) 100%); background-size: 200% 100%; border-radius: 6px; margin-bottom: 0.75rem; }
+.skeleton-title { height: 1.6rem; width: 60%; }
+.skeleton-line { height: 0.9rem; width: 85%; }
+.skeleton-line.short { width: 45%; }
+.loading-note { margin: 1rem 0 0; color: var(--ink-soft); font-size: 0.9rem; }
+@media (prefers-reduced-motion: no-preference) { .skeleton { animation: shimmer 1.4s ease-in-out infinite; } }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.print-head { display: none; }
+@media print {
+  .print-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 0 0.75rem; margin-bottom: 0.5rem; border-bottom: 2px solid #0c2340; }
+  .print-head strong { font-size: 1.1rem; color: #0c2340; }
+  .print-head span { font-size: 0.8rem; color: #475467; }
+  .segmented { display: none !important; }
+}

@@ -28,6 +28,7 @@ export default function App() {
   const [info, setInfo] = useState<ModelInfo | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
   const [pred, setPred] = useState<PredictState>({ status: 'idle' });
+  const [slow, setSlow] = useState(false);
   const { dispatch } = useHistory();
 
   useEffect(() => {
@@ -42,7 +43,10 @@ export default function App() {
 
   async function handlePredict(patient: PatientInput, patientId: string) {
     setPred({ status: 'loading' });
+    setSlow(false);
+    const timer = setTimeout(() => setSlow(true), 2500);
     const [p, e] = await Promise.allSettled([predict(patient), explain(patient)]);
+    clearTimeout(timer);
     if (p.status === 'rejected') {
       setPred({ status: 'error', message: messageOf(p.reason) });
       return;
@@ -110,8 +114,13 @@ export default function App() {
               </div>
             )}
             {pred.status === 'loading' && (
-              <div className="report report-empty" aria-busy="true">
-                <p>Reviewing panel</p>
+              <div className="report report-loading" aria-busy="true">
+                <div className="skeleton skeleton-title" />
+                <div className="skeleton skeleton-line" />
+                <div className="skeleton skeleton-line short" />
+                <p className="loading-note">
+                  {slow ? 'Starting the model service. The first review after a quiet period can take a few seconds.' : 'Reviewing panel'}
+                </p>
               </div>
             )}
           </div>
