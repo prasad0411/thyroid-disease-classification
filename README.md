@@ -1,192 +1,108 @@
-# 🧬 Thyroid Disease Classification — Clinical Decision Support System
+# Thyroid Panel Review
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Streamlit-FF4B4B?logo=streamlit)](https://thyroid-disease-classification.streamlit.app/)
-[![Paper](https://img.shields.io/badge/Published-Springer_2024-blue?logo=springer)](https://link.springer.com/chapter/10.1007/978-981-97-6106-7_9)
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python)](https://python.org)
-[![Model Card](https://img.shields.io/badge/Model_Card-Responsible_AI-green)](/MODEL_CARD.md)
+[![frontend](https://github.com/prasad0411/thyroid-disease-classification/actions/workflows/frontend.yml/badge.svg)](https://github.com/prasad0411/thyroid-disease-classification/actions/workflows/frontend.yml)
+[![ml-integrity](https://github.com/prasad0411/thyroid-disease-classification/actions/workflows/ci.yml/badge.svg)](https://github.com/prasad0411/thyroid-disease-classification/actions/workflows/ci.yml)
+[![Paper](https://img.shields.io/badge/Published-Springer_2024-blue)](https://link.springer.com/chapter/10.1007/978-981-97-6106-7_9)
 
-An ML system for thyroid disease classification combining an XGBoost classifier (**85.09% accuracy, macro F1 0.7213** against a 72.97% majority baseline), SHAP explainability, RAG-powered clinical Q&A, and an interactive Streamlit dashboard.
+Clinical decision support for thyroid function panels. A clinician enters TSH, T3, total T4, and T4 uptake with brief history; the app classifies the panel as negative, hypothyroid, or hyperthyroid, plots every analyte against its reference interval, and explains each prediction with SHAP so the reasoning is visible, not just the answer.
 
-The headline number is deliberately lower than an earlier version of this project reported. That version scored 97.6% because four input features were derived from the diagnosis label: a depth-4 decision tree using only those four, with no hormone values at all, reached 94.3%. The data generator was rebuilt around causal ordering — latent condition → hormone levels → clinical observations → recorded diagnosis, with treatment partially normalising labs as a real confounder — and evaluation was rebuilt with resampling inside cross-validation folds and feature selection fit on training data only. 85.09% is what the model learns from hormone panels rather than from leaked treatment flags.
+![Hypothyroid report](docs/screenshots/report-hypo.png)
 
----
+<details>
+<summary>Hyperthyroid report and mobile view</summary>
 
-## 🏗️ Architecture
+![Hyperthyroid report](docs/screenshots/report-hyper.png)
+<img src="docs/screenshots/report-mobile.png" alt="Mobile report" width="320">
+</details>
 
-```mermaid
-flowchart TD
-    A["Patient Data Input
-Lab values TSH, T3, T4, T4U
-Demographics + History"] --> B["Feature Engineering
-RFE: 19 to 12 features
-SMOTE: 3:1 to 1:1 balance"]
-    B --> C["XGBoost Classifier
-Selected by validation macro F1
-85.09% accuracy · macro F1 0.7213"]
-    C --> D["Prediction + Confidence"]
-    C --> E["SHAP Explainer
-Per-feature values"]
-    D --> F["Counterfactual Analysis
-What would flip the diagnosis?"]
-    E --> F
-    F --> G["RAG Retrieval
-ChromaDB + 25 medical documents"]
-    G --> H["Clinical Report Generator
-LLM-powered with template fallback"]
-    H --> I["Streamlit Dashboard
-Predict · Q&A · Performance
-Batch · About"]
-```
-
-## ✨ Features
-
-### 🔬 Predict & Explain
-- Real-time classification with color-coded diagnosis banners (green/amber/red)
-- SVG confidence gauge with class probability breakdown
-- Inline lab value indicators showing elevated/low/normal against reference ranges
-- SHAP waterfall charts with per-feature contribution visualization
-- **Counterfactual differential analysis**: shows exactly what would need to change for a different diagnosis
-- Patient vs population z-score comparison against training data distribution
-- Downloadable clinical report with findings and recommended next steps
-
-### 📚 Clinical Q&A (RAG-Powered)
-- Semantic search over 25 indexed PubMed-style medical abstracts via ChromaDB
-- LLM-generated answers grounded in retrieved medical literature with source citations
-- Template-based fallback when no API key is configured — always functional
-- Suggested follow-up questions based on topic context
-- Persistent conversation history within session
-
-### 📊 Model Performance
-- Interactive comparison across all trained classifiers with highlighted best scores
-- Training visualizations in tabbed layout (confusion matrix, feature importance, SHAP summary)
-- Dataset class distribution and feature statistics
-
-### 📁 Batch Prediction
-- Upload CSV for multi-patient screening with simultaneous prediction
-- **Data drift detection**: warns when uploaded data distributions deviate significantly from training data
-- Input validation: type coercion, missing column detection, empty file handling
-- Downloadable results with predictions and confidence scores
-
-### ℹ️ About & Methodology
-- Full system architecture explanation
-- Springer publication link and citation
-- Responsible AI documentation (see [Model Card](MODEL_CARD.md))
-
-## 📈 Experiment History
-
-### Leakage audit
-
-Before trusting any score, the dataset was checked for how much signal the
-features actually carry:
-
-| Check | Accuracy |
-|-------|----------|
-| Majority-class baseline | 72.97% |
-| Clinical flags only, no hormone values | 75.34% |
-| Lift of flags over baseline | 2.37% |
-
-A trivial predictor already reaches 72.97%. Any reported accuracy has to be read
-against that, not against zero.
-
-### Corrected results
-
-| Metric | Value |
-|--------|-------|
-| Test accuracy | **85.09%** |
-| Test macro F1 | **0.7213** |
-| 5-fold CV macro F1 (train) | 0.7269 ± 0.0044 |
-| Selected model | XGBoost, by validation macro F1 |
-| Features | 17 → 12 via RFE, fit on the training fold only |
-| Class balancing | SMOTE inside CV folds |
-| Dataset | 150,000 synthetic rows (90,000 train) |
-
-### Per-class performance
-
-Published in full because the aggregate hides the part that matters: recall on
-the minority classes is where a clinical model either works or does not.
-
-| Class | Precision | Recall | F1 | Support |
-|-------|-----------|--------|----|---------|
-| Hyperthyroid | 0.87 | 0.44 | 0.58 | 2225 |
-| Hypothyroid | 0.88 | 0.55 | 0.67 | 5884 |
-| Negative | 0.85 | 0.97 | 0.91 | 21891 |
-
-### Probability calibration
-
-Isotonic regression applied after model selection, so predicted confidence is
-usable for thresholding rather than ranking alone:
-
-| Class | Brier (raw) | Brier (calibrated) | Improvement |
-|-------|-------------|--------------------|-------------|
-| Hyperthyroid | 0.0655 | 0.0361 | 45% |
-| Hypothyroid | 0.0865 | 0.0709 | 18% |
-| Negative | 0.1576 | 0.1011 | 36% |
-
-Full experiment log, including the leakage audit and calibration analysis: [`outputs/experiments.json`](outputs/experiments.json)
-
-## 🚀 Deployment
-
-**Live**: [thyroid-disease-classification.streamlit.app](https://thyroid-disease-classification.streamlit.app/)
-
-### Run Locally
+## Run it
 
 ```bash
-git clone https://github.com/prasad0411/thyroid-disease-classification.git
-cd thyroid-disease-classification
-pip install -r requirements.txt
-streamlit run app.py
+docker compose up --build
+# open http://localhost:8080
 ```
 
-### Deploy to Streamlit Cloud
+Both images are built, smoke tested, and published by CI on every push to `main`:
+`ghcr.io/prasad0411/thyroid-api` and `ghcr.io/prasad0411/thyroid-web`.
 
-1. Push to GitHub (model artifacts must be tracked in git)
-2. Go to [share.streamlit.io](https://share.streamlit.io)
-3. Select repo → branch `main` → main file `app.py`
-4. Deploy — builds automatically in 2-3 minutes
+For local development with hot reload:
 
-### Optional: LLM-Powered Reports
-
-Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in Streamlit Cloud secrets for LLM-generated clinical reports. Without an API key, the system uses a clinically-validated template engine — all features remain functional.
-
-## 📂 Project Structure
-
-```
-├── app.py                        # Streamlit dashboard (5 pages)
-├── train.py                      # Model training pipeline
-├── data_generator.py             # Dataset generation
-├── models/                       # Versioned model artifacts
-│   ├── best_model_*.pkl          #   Trained classifier
-│   ├── scaler_*.pkl              #   Feature scaler
-│   ├── label_encoder_*.pkl       #   Label encoder
-│   └── metadata_*.json           #   Performance metrics + config
-├── rag/
-│   ├── documents.py              # 25 medical literature abstracts
-│   ├── indexer.py                # ChromaDB vector store builder
-│   └── retriever.py              # Semantic search retrieval
-├── llm/
-│   ├── report_generator.py       # LLM clinical report generation
-│   └── clinical_qa.py            # RAG-powered Q&A
-├── api/
-│   └── predict.py                # FastAPI prediction endpoint
-├── MODEL_CARD.md                 # Responsible AI documentation
-├── experiments.json              # Experiment tracking log
-├── .streamlit/config.toml        # Theme configuration
-├── requirements.txt
-└── packages.txt                  # System deps for Streamlit Cloud
+```bash
+pip install -r requirements-api.txt
+uvicorn api.predict:app --port 8000          # terminal 1
+cd frontend && npm ci && npm run dev          # terminal 2, http://localhost:5173
 ```
 
-## 📄 Publication
+## Architecture
 
-**Classification and Diagnosis of Thyroid Disease Using XGBoost and SHAP**
-*Springer Conference Proceedings, March 2024*
-[Read Paper →](https://link.springer.com/chapter/10.1007/978-981-97-6106-7_9)
+```mermaid
+flowchart LR
+    B[Browser<br/>React 19 + TypeScript] -->|/ static assets| N[nginx<br/>unprivileged, port 8080]
+    B -->|/api/*| N
+    N -->|proxy| A[FastAPI<br/>/predict /explain /model-info /health]
+    A --> R[model_registry.py<br/>one loader for API and Streamlit]
+    R --> M[(Calibrated XGBoost<br/>+ scaler + label encoder)]
+    A --> S[TreeSHAP explainer<br/>cached per model version]
+```
 
-## 👨‍💻 Author
+The browser only ever talks to its own origin; nginx forwards `/api` to the API container, so there is no CORS surface in production. Compose waits for the API health check before starting nginx.
 
-**Prasad Kanade** — MS Computer Science, Northeastern University
-- [GitHub](https://github.com/prasad0411) · [LinkedIn](https://linkedin.com/in/prasad-kanade-/) · kanade.pra@northeastern.edu
-- [Portfolio](https://prasad0411.github.io/Prasad-Portfolio/)
+## What a clinician sees
 
----
+| Area | Detail |
+|---|---|
+| Panel entry | Patient ID, age, sex, the four analytes with reference intervals under each input, clinical history flags, inline validation that mirrors the API's own constraints |
+| Interpretation | Pattern statement, model probability, count of analytes outside reference intervals, probability split across all three classes |
+| Results | Each analyte plotted on its reference interval track with High and Low flags; TSH uses a log scale; Free T4 index is calculated with the same formula used in training |
+| Explanation | The six inputs that moved the prediction most, toward or away from the result, in plain language |
+| Workflow | Copy to note writes a structured summary for the clinical record; Print produces a clean report; session history keeps every panel reviewed |
 
-*This system is intended for research and educational purposes. It is not a substitute for professional medical judgment.*
+## Model and evaluation
+
+| Metric (held out test set, 30,000 records) | Value |
+|---|---|
+| Accuracy | 85.1% |
+| Macro F1 | 0.721 |
+| Majority class baseline | 73.0% |
+| Log loss | 0.373 |
+| 5 fold CV macro F1 (train) | 0.727 ± 0.004 |
+
+| Class | Precision | Recall |
+|---|---|---|
+| Negative | 0.846 | 0.974 |
+| Hypothyroid | 0.880 | 0.547 |
+| Hyperthyroid | 0.871 | 0.439 |
+
+Trained on 150,000 synthetic patient records (90,000 train, 30,000 validation, 30,000 test) from a generator built around causal ordering: latent condition, then hormone levels, then clinical observations, then the recorded diagnosis. Precision is high across classes; recall on the two disease classes is the main area for improvement, and cost sensitive thresholds are the next planned step.
+
+## Design decisions
+
+**Leakage was found and removed, and the headline number went down.** An earlier version reported 97.6% accuracy. An audit showed four inputs were derived from the diagnosis label; a depth 4 tree using only those reached 94.3% without seeing a single hormone value. The generator and evaluation were rebuilt (feature selection and resampling inside training folds only), and the `ml-integrity` workflow now fails the build if that leak ever returns. Full history in [docs/MODEL_DETAILS.md](docs/MODEL_DETAILS.md).
+
+**One loader for every consumer.** `model_registry.py` reads both metadata schemas, skips incomplete artifact sets, and raises on missing features instead of silently zero filling them. The API and the Streamlit app both use it, which is how a schema mismatch that would have crashed the live demo was caught before deployment.
+
+**Explanations are honest about what they explain.** SHAP runs on the XGBoost model inside the calibration wrapper, so values are log odds contributions before calibration, and the class explained is always the one the calibrated model predicted.
+
+**Reproducible builds.** Scientific library versions are pinned exactly. A prediction made in the container matches the developer machine to every digit (0.9824328804732992). The API image uses Python 3.13 because SHAP on 3.14 depends on prerelease numba builds that are not published for Linux.
+
+## Testing and CI
+
+* 22 Vitest and React Testing Library tests: validation, API client error handling (422, 502, network failure), reference interval logic, note generation, and full user flows through the rendered app
+* `frontend` workflow: lint, tests, type checked build, then the full Docker stack is started and smoke tested through nginx (`/predict` and `/explain`) before images are pushed to GHCR
+* `ml-integrity` workflow: leakage audit, split before feature selection, model selection on validation only, and cross validation variance reporting
+
+## Repository layout
+
+```
+api/predict.py          FastAPI service
+model_registry.py       model loading, prediction, SHAP explanation
+frontend/               React + TypeScript app, Vitest tests, Dockerfile, nginx config
+models/                 versioned model artifacts and metadata
+train.py, data_generator.py, evaluate.py   training and evaluation pipeline
+app.py                  original Streamlit interface
+.github/workflows/      frontend and ml-integrity pipelines
+```
+
+## Publication
+
+Published in Springer proceedings, 2024: [doi 10.1007/978-981-97-6106-7_9](https://link.springer.com/chapter/10.1007/978-981-97-6106-7_9). The published accuracy predates the leakage audit described above; the numbers in this README are the corrected ones.
