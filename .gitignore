@@ -4,8 +4,13 @@ data/
 outputs/training.log
 .DS_Store
 node_modules/
-package-lock.json
-package.json
+/package-lock.json
+/package.json
 wake.log
 run_wake.sh
 app.py.bak
+*.bak
+mlruns/
+outputs/split_cache.pkl
+outputs/execution_history.log
+models/*_20260903_153413.*
