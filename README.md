@@ -43,7 +43,7 @@ cd frontend && npm ci && npm run dev          # terminal 2, http://localhost:517
 flowchart LR
     B[Browser<br/>React 19 + TypeScript] -->|/ static assets| N[nginx<br/>unprivileged, port 8080]
     B -->|/api/*| N
-    N -->|proxy| A[FastAPI<br/>/predict /explain /model-info /health]
+    N -->|proxy| A[FastAPI<br/>REST: /predict /explain /model-info /health<br/>GraphQL: /graphql]
     A --> R[model_registry.py<br/>one loader for API and Streamlit]
     R --> M[(Calibrated XGBoost<br/>+ scaler + label encoder)]
     A --> S[TreeSHAP explainer<br/>cached per model version]
@@ -100,28 +100,6 @@ The network (dense layers 256, 128 and 64 with batch norm, dropout 0.25 and a cl
 
 **Reproducible builds.** Scientific library versions are pinned exactly. A prediction made in the container matches the developer machine to every digit (0.9824328804732992). The API image uses Python 3.13 because SHAP on 3.14 depends on prerelease numba builds that are not published for Linux.
 
-## Testing and CI
-
-* 22 Vitest and React Testing Library tests: validation, API client error handling (422, 502, network failure), reference interval logic, note generation, and full user flows through the rendered app
-* `frontend` workflow: lint, tests, type checked build, then the full Docker stack is started and smoke tested through nginx (`/predict` and `/explain`) before images are pushed to GHCR
-* `ml-integrity` workflow: leakage audit, split before feature selection, model selection on validation only, and cross validation variance reporting
-
-## Repository layout
-
-```
-api/predict.py          FastAPI service
-model_registry.py       model loading, prediction, SHAP explanation
-frontend/               React + TypeScript app, Vitest tests, Dockerfile, nginx config
-models/                 versioned model artifacts and metadata
-train.py, data_generator.py, evaluate.py   training and evaluation pipeline
-app.py                  original Streamlit interface
-.github/workflows/      frontend and ml-integrity pipelines
-```
-
-## Publication
-
-Published in Springer proceedings, 2024: [doi 10.1007/978-981-97-9855-1_23](https://link.springer.com/chapter/10.1007/978-981-97-9855-1_23). The published accuracy predates the leakage audit described above; the numbers in this README are the corrected ones.
-
 ## REST and GraphQL
 
 The API serves both. **REST** (`POST /predict`, `POST /explain`, `GET /model-info`) is the simple path for predictions. **GraphQL** at `/graphql`, built with Strawberry, exposes `modelInfo` and `explain(patient)` and reuses the same Pydantic validation rules, so invalid input fails the same way over either protocol. A client asks for exactly the fields it needs:
@@ -139,3 +117,27 @@ The React app reads the model card through **Apollo Client**: it is fetched once
 
 The report and the review history each render inside a React error boundary. If either fails to render, that panel shows a short message with a retry button, and the form and the rest of the page keep working. A fresh report resets its boundary.
 
+## Testing and CI
+
+* 28 Vitest and React Testing Library tests: validation, API client error handling (422, 502, network failure), reference interval logic, note generation, full user flows through the rendered app, the GraphQL model card, and error boundaries
+* 11 pytest tests for the API: REST endpoints, GraphQL queries, input validation (422) and CORS
+* `frontend` workflow: lint, tests, type checked build, then the full Docker stack is started and smoke tested through nginx (`/predict`, `/explain` and a GraphQL query) before images are pushed to GHCR
+* `ml-integrity` workflow: leakage audit, split before feature selection, model selection on validation only, and cross validation variance reporting
+
+## Repository layout
+
+```
+api/predict.py          FastAPI service (REST)
+api/graphql_schema.py   GraphQL schema (Strawberry), same validation as REST
+tests/                  API tests: REST, GraphQL, validation, CORS
+model_registry.py       model loading, prediction, SHAP explanation
+frontend/               React + TypeScript app, Vitest tests, Dockerfile, nginx config
+models/                 versioned model artifacts and metadata
+train.py, data_generator.py, evaluate.py   training and evaluation pipeline
+app.py                  original Streamlit interface
+.github/workflows/      frontend and ml-integrity pipelines
+```
+
+## Publication
+
+Agrawal, Kanade, Kulkarni and Firmin, *Comparing Machine Learning Models for Thyroid Prediction*, Data Science and Big Data Analytics (IDBA 2024), Springer, Learning and Analytics in Intelligent Systems vol. 43, pp. 327 to 337, 2025: [doi 10.1007/978-981-97-9855-1_23](https://link.springer.com/chapter/10.1007/978-981-97-9855-1_23). The paper compared classic models on real data from Aadesh Medical College and Hospital, with a best accuracy of 97.53%. This repository rebuilds that work as a full platform on synthetic data, with its own leakage audit; the numbers in this README are the platform's.

@@ -1,9 +1,12 @@
 # 🧬 Thyroid Disease Classification — Clinical Decision Support System
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Streamlit-FF4B4B?logo=streamlit)](https://thyroid-disease-classification.streamlit.app/)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-React_app-0B5CAD)](https://prasad0411.github.io/thyroid-disease-classification/)
+[![Streamlit](https://img.shields.io/badge/Original-Streamlit-FF4B4B?logo=streamlit)](https://thyroid-disease-classification.streamlit.app/)
 [![Paper](https://img.shields.io/badge/Published-Springer_2024-blue?logo=springer)](https://link.springer.com/chapter/10.1007/978-981-97-9855-1_23)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python)](https://python.org)
-[![Model Card](https://img.shields.io/badge/Model_Card-Responsible_AI-green)](/MODEL_CARD.md)
+[![Model Card](https://img.shields.io/badge/Model_Card-Responsible_AI-green)](../MODEL_CARD.md)
+
+> This document covers the model, its evaluation history and the original Streamlit interface. The current app is the React frontend described in the [README](../README.md).
 
 An ML system for thyroid disease classification combining an XGBoost classifier (**85.09% accuracy, macro F1 0.7213** against a 72.97% majority baseline), SHAP explainability, RAG-powered clinical Q&A, and an interactive Streamlit dashboard.
 
@@ -18,7 +21,7 @@ flowchart TD
     A["Patient Data Input
 Lab values TSH, T3, T4, T4U
 Demographics + History"] --> B["Feature Engineering
-RFE: 19 to 12 features
+RFE: 17 to 12 features
 SMOTE: 3:1 to 1:1 balance"]
     B --> C["XGBoost Classifier
 Selected by validation macro F1
