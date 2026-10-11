@@ -119,3 +119,21 @@ app.py                  original Streamlit interface
 ## Publication
 
 Published in Springer proceedings, 2024: [doi 10.1007/978-981-97-6106-7_9](https://link.springer.com/chapter/10.1007/978-981-97-6106-7_9). The published accuracy predates the leakage audit described above; the numbers in this README are the corrected ones.
+
+## REST and GraphQL
+
+The API serves both. **REST** (`POST /predict`, `POST /explain`, `GET /model-info`) is the simple path for predictions. **GraphQL** at `/graphql`, built with Strawberry, exposes `modelInfo` and `explain(patient)` and reuses the same Pydantic validation rules, so invalid input fails the same way over either protocol. A client asks for exactly the fields it needs:
+
+```graphql
+query {
+  modelInfo { model version testMetrics { accuracy f1Macro } }
+  explain(patient: { TSH: 15, T4: 60 }) { prediction contributions { feature shap } }
+}
+```
+
+The React app reads the model card through **Apollo Client**: it is fetched once, kept in Apollo's normalised cache, and shared by every component that needs it, with loading and error states mapped to the same messages as the REST client.
+
+## Error boundaries
+
+The report and the review history each render inside a React error boundary. If either fails to render, that panel shows a short message with a retry button, and the form and the rest of the page keep working. A fresh report resets its boundary.
+

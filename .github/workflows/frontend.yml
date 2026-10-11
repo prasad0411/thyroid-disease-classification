@@ -45,6 +45,8 @@ jobs:
           grep -q '"prediction":"hypothyroid"' predict.json
           curl -fsS -X POST http://localhost:8080/api/explain \
             -H "Content-Type: application/json" -d '{"TSH":15,"T4":60}' | grep -q '"contributions"'
+          curl -fsS -X POST http://localhost:8080/api/graphql \
+            -H "Content-Type: application/json" -d '{"query":"{ modelInfo { model version } }"}' | grep -q '"modelInfo"'
 
       - name: Logs on failure
         if: failure()

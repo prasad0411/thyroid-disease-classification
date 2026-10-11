@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react';
-import { explain, getModelInfo, predict, type Explanation, type ModelInfo, type Prediction } from './api';
+import { useState } from 'react';
+import { useQuery } from '@apollo/client';
+import { explain, predict, type Explanation, type Prediction } from './api';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { MODEL_INFO_QUERY, describeError, toModelInfo, type ModelInfoQuery } from './graphql';
 import { HistoryPanel } from './components/HistoryPanel';
 import { PatientForm } from './components/PatientForm';
 import { Report } from './components/Report';
@@ -25,21 +28,12 @@ const stamp = () =>
   new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 export default function App() {
-  const [info, setInfo] = useState<ModelInfo | null>(null);
-  const [infoError, setInfoError] = useState<string | null>(null);
+  const { data: infoData, error: infoGqlError } = useQuery<ModelInfoQuery>(MODEL_INFO_QUERY);
+  const info = infoData ? toModelInfo(infoData.modelInfo) : null;
+  const infoError = infoGqlError ? describeError(infoGqlError) : null;
   const [pred, setPred] = useState<PredictState>({ status: 'idle' });
   const [slow, setSlow] = useState(false);
   const { dispatch } = useHistory();
-
-  useEffect(() => {
-    const ctrl = new AbortController();
-    getModelInfo(ctrl.signal)
-      .then(setInfo)
-      .catch((err: unknown) => {
-        if (!ctrl.signal.aborted) setInfoError(messageOf(err));
-      });
-    return () => ctrl.abort();
-  }, []);
 
   async function handlePredict(patient: PatientInput, patientId: string) {
     setPred({ status: 'loading' });
@@ -92,6 +86,7 @@ export default function App() {
           <PatientForm submitting={pred.status === 'loading'} onSubmit={handlePredict} />
           <div className="report-slot">
             {pred.status === 'success' && (
+              <ErrorBoundary key={pred.reportedAt} label="the report">
               <Report
                 patientId={pred.patientId}
                 patient={pred.patient}
@@ -101,6 +96,7 @@ export default function App() {
                 explainError={pred.explainError}
                 info={info}
               />
+              </ErrorBoundary>
             )}
             {pred.status === 'error' && (
               <div className="service-error" role="alert">
@@ -125,7 +121,9 @@ export default function App() {
             )}
           </div>
         </main>
-        <HistoryPanel />
+        <ErrorBoundary label="the review history">
+          <HistoryPanel />
+        </ErrorBoundary>
       </div>
     </div>
   );

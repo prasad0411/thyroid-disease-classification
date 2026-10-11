@@ -12,6 +12,8 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
+    "@apollo/client": "^3.14.1",
+    "graphql": "^16.14.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

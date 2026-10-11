@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from api.graphql_schema import build_router
 from model_registry import explain_one, load_latest, predict_one
 
 bundle = load_latest()
@@ -107,3 +108,6 @@ def explain(patient: PatientInput):
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return ExplanationOutput(**out, features_used=bundle.features, model_version=bundle.timestamp)
+
+
+app.include_router(build_router(bundle, explain_one, PatientInput), prefix="/graphql")

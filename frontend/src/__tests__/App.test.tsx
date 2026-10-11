@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { ApolloProvider } from '@apollo/client';
 import App from '../App';
+import { makeClient } from '../graphql';
 import { HistoryProvider } from '../state/HistoryProvider';
 
 const MODEL_INFO = {
@@ -30,6 +32,20 @@ const EXPLANATION = {
   ],
 };
 
+const MODEL_INFO_GQL = {
+  data: {
+    modelInfo: {
+      __typename: 'ModelInfo',
+      model: MODEL_INFO.model,
+      version: MODEL_INFO.version,
+      datasetSize: MODEL_INFO.dataset_size,
+      majorityBaseline: MODEL_INFO.majority_baseline,
+      features: [],
+      testMetrics: { __typename: 'Metrics', accuracy: 0.8509, f1Macro: 0.7213, logLoss: null },
+    },
+  },
+};
+
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -44,16 +60,18 @@ function routeFetch(routes: Routes) {
 }
 
 const ALL_OK: Routes = {
-  '/model-info': () => json(200, MODEL_INFO),
+  '/graphql': () => json(200, MODEL_INFO_GQL),
   '/predict': () => json(200, PREDICTION),
   '/explain': () => json(200, EXPLANATION),
 };
 
 function renderApp() {
   return render(
-    <HistoryProvider>
-      <App />
-    </HistoryProvider>,
+    <ApolloProvider client={makeClient()}>
+      <HistoryProvider>
+        <App />
+      </HistoryProvider>
+    </ApolloProvider>,
   );
 }
 
@@ -113,7 +131,7 @@ describe('App', () => {
   });
 
   it('flags an out of range value while typing', async () => {
-    routeFetch({ '/model-info': () => json(200, MODEL_INFO) });
+    routeFetch({ '/graphql': () => json(200, MODEL_INFO_GQL) });
     const user = userEvent.setup();
     renderApp();
     const tsh = screen.getByLabelText('TSH');
@@ -133,7 +151,7 @@ describe('App', () => {
   });
 
   it('blocks submission when a lab value is invalid', async () => {
-    const fetchMock = routeFetch({ '/model-info': () => json(200, MODEL_INFO) });
+    const fetchMock = routeFetch({ '/graphql': () => json(200, MODEL_INFO_GQL) });
     const user = userEvent.setup();
     renderApp();
     const tsh = screen.getByLabelText('TSH');
@@ -145,8 +163,18 @@ describe('App', () => {
   });
 
   it('shows how to start the API when it is down', async () => {
-    routeFetch({ '/model-info': () => new Response('Bad Gateway', { status: 502 }) });
+    routeFetch({ '/graphql': () => new Response('Bad Gateway', { status: 502 }) });
     renderApp();
     expect(await screen.findByRole('alert')).toHaveTextContent('uvicorn api.predict:app --port 8000');
+  });
+
+  it('loads the model card through GraphQL', async () => {
+    const fetchMock = routeFetch(ALL_OK);
+    renderApp();
+    await screen.findByRole('button', { name: 'Predict' });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toMatch(/\/graphql$/);
+    expect(String(init?.body)).toContain('modelInfo');
   });
 });
