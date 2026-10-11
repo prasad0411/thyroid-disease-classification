@@ -840,7 +840,7 @@ elif page == "About & Methodology":
     ### Thyroid Disease Classification — Clinical Decision Support System
 
     This system uses machine learning to assist clinicians in thyroid disease diagnosis.
-    It combines a high-accuracy Random Forest classifier with explainable AI and retrieval-augmented
+    It combines a calibrated XGBoost classifier with explainable AI and retrieval-augmented
     generation to provide transparent, evidence-based clinical decision support.
 
     ---
