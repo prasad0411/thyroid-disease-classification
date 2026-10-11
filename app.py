@@ -32,6 +32,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# The current version of this demo is the React app; this Streamlit app stays available as the original
+st.info(
+    "**This demo has moved.** The current Thyroid Panel Review is a React and TypeScript app on a "
+    "FastAPI service, with clinician and patient views, SHAP explanations and a model card. "
+    "[Open the current app](https://prasad0411.github.io/thyroid-disease-classification/)"
+)
+
 # ── Custom CSS ────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -912,7 +919,7 @@ elif page == "About & Methodology":
 
     **Classification and Diagnosis of Thyroid Disease Using XGBoost and SHAP**
     *Springer Conference Proceedings, March 2024*
-    [Read Paper →](https://link.springer.com/chapter/10.1007/978-981-97-6106-7_9)
+    [Read Paper →](https://link.springer.com/chapter/10.1007/978-981-97-9855-1_23)
 
     ---
 

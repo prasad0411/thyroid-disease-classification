@@ -3,7 +3,7 @@
 [![frontend](https://github.com/prasad0411/thyroid-disease-classification/actions/workflows/frontend.yml/badge.svg)](https://github.com/prasad0411/thyroid-disease-classification/actions/workflows/frontend.yml)
 [![ml-integrity](https://github.com/prasad0411/thyroid-disease-classification/actions/workflows/ci.yml/badge.svg)](https://github.com/prasad0411/thyroid-disease-classification/actions/workflows/ci.yml)
 [![Live Demo](https://img.shields.io/badge/Live_Demo-React_app-0B5CAD)](https://prasad0411.github.io/thyroid-disease-classification/)
-[![Paper](https://img.shields.io/badge/Published-Springer_2024-blue)](https://link.springer.com/chapter/10.1007/978-981-97-6106-7_9)
+[![Paper](https://img.shields.io/badge/Published-Springer_2024-blue)](https://link.springer.com/chapter/10.1007/978-981-97-9855-1_23)
 
 Clinical decision support for thyroid function panels. A clinician enters TSH, T3, total T4, and T4 uptake with brief history; the app classifies the panel as negative, hypothyroid, or hyperthyroid, plots every analyte against its reference interval, and explains each prediction with SHAP so the reasoning is visible, not just the answer.
 
@@ -92,6 +92,8 @@ The network (dense layers 256, 128 and 64 with batch norm, dropout 0.25 and a cl
 
 **Leakage was found and removed, and the headline number went down.** An earlier version reported 97.6% accuracy. An audit showed four inputs were derived from the diagnosis label; a depth 4 tree using only those reached 94.3% without seeing a single hormone value. The generator and evaluation were rebuilt (feature selection and resampling inside training folds only), and the `ml-integrity` workflow now fails the build if that leak ever returns. Full history in [docs/MODEL_DETAILS.md](docs/MODEL_DETAILS.md).
 
+> **Where 97.5%, 97.6% and 85.1% come from.** The published paper ([Agrawal, Kanade, Kulkarni and Firmin, *Comparing Machine Learning Models for Thyroid Prediction*, IDBA 2024, Springer](https://link.springer.com/chapter/10.1007/978-981-97-9855-1_23)) compared classic models on real data from Aadesh Medical College and Hospital; its best model reached **97.53%**. Rebuilding the work as a platform on 150,000 synthetic records, the early runs averaged **97.6%**. A leakage audit then showed that features derived from the diagnosis itself were inflating the score. With the data regenerated so that no feature depends on the label, the honest held out result is **85.1%** (macro F1 0.721) against a 73.0% majority baseline, and a CI check keeps that leakage from coming back.
+
 **One loader for every consumer.** `model_registry.py` reads both metadata schemas, skips incomplete artifact sets, and raises on missing features instead of silently zero filling them. The API and the Streamlit app both use it, which is how a schema mismatch that would have crashed the live demo was caught before deployment.
 
 **Explanations are honest about what they explain.** SHAP runs on the XGBoost model inside the calibration wrapper, so values are log odds contributions before calibration, and the class explained is always the one the calibrated model predicted.
@@ -118,7 +120,7 @@ app.py                  original Streamlit interface
 
 ## Publication
 
-Published in Springer proceedings, 2024: [doi 10.1007/978-981-97-6106-7_9](https://link.springer.com/chapter/10.1007/978-981-97-6106-7_9). The published accuracy predates the leakage audit described above; the numbers in this README are the corrected ones.
+Published in Springer proceedings, 2024: [doi 10.1007/978-981-97-9855-1_23](https://link.springer.com/chapter/10.1007/978-981-97-9855-1_23). The published accuracy predates the leakage audit described above; the numbers in this README are the corrected ones.
 
 ## REST and GraphQL
 

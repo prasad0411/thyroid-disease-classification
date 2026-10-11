@@ -92,7 +92,7 @@ Models are saved with timestamps (e.g., `best_model_20260428_230351.pkl`) and in
   author={Kanade, Prasad},
   booktitle={Springer Conference Proceedings},
   year={2024},
-  doi={10.1007/978-981-97-6106-7_9}
+  doi={10.1007/978-981-97-9855-1_23}
 }
 ```
 
@@ -100,4 +100,4 @@ Models are saved with timestamps (e.g., `best_model_20260428_230351.pkl`) and in
 
 **Prasad Kanade** — MS Computer Science, Northeastern University
 - GitHub: [prasad0411](https://github.com/prasad0411)
-- Paper: [Springer Link](https://link.springer.com/chapter/10.1007/978-981-97-6106-7_9)
+- Paper: [Springer Link](https://link.springer.com/chapter/10.1007/978-981-97-9855-1_23)

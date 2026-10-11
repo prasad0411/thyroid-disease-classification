@@ -1,7 +1,7 @@
 # 🧬 Thyroid Disease Classification — Clinical Decision Support System
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-Streamlit-FF4B4B?logo=streamlit)](https://thyroid-disease-classification.streamlit.app/)
-[![Paper](https://img.shields.io/badge/Published-Springer_2024-blue?logo=springer)](https://link.springer.com/chapter/10.1007/978-981-97-6106-7_9)
+[![Paper](https://img.shields.io/badge/Published-Springer_2024-blue?logo=springer)](https://link.springer.com/chapter/10.1007/978-981-97-9855-1_23)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python)](https://python.org)
 [![Model Card](https://img.shields.io/badge/Model_Card-Responsible_AI-green)](/MODEL_CARD.md)
 
@@ -179,7 +179,7 @@ Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in Streamlit Cloud secrets for LLM-g
 
 **Classification and Diagnosis of Thyroid Disease Using XGBoost and SHAP**
 *Springer Conference Proceedings, March 2024*
-[Read Paper →](https://link.springer.com/chapter/10.1007/978-981-97-6106-7_9)
+[Read Paper →](https://link.springer.com/chapter/10.1007/978-981-97-9855-1_23)
 
 ## 👨‍💻 Author
 
