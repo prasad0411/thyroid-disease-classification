@@ -87,11 +87,15 @@ Models are saved with timestamps (e.g., `best_model_20260428_230351.pkl`) and in
 ## Citation
 
 ```bibtex
-@inproceedings{kanade2024thyroid,
-  title={Classification and Diagnosis of Thyroid Disease Using XGBoost and SHAP},
-  author={Kanade, Prasad},
-  booktitle={Springer Conference Proceedings},
-  year={2024},
+@inproceedings{agrawal2025thyroid,
+  title={Comparing Machine Learning Models for Thyroid Prediction},
+  author={Agrawal, Aishani and Kanade, Prasad and Kulkarni, Pradnya S. and Firmin, Selena},
+  booktitle={Data Science and Big Data Analytics (IDBA 2024)},
+  series={Learning and Analytics in Intelligent Systems},
+  volume={43},
+  pages={327--337},
+  publisher={Springer, Singapore},
+  year={2025},
   doi={10.1007/978-981-97-9855-1_23}
 }
 ```
